@@ -37,9 +37,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('tutor_applications', function (Blueprint $table) {
-            $table->dropUnique('tutor_applications_one_pending_per_user');
-        });
+        DB::statement('DROP INDEX IF EXISTS tutor_applications_one_pending_per_user');
 
         Schema::dropIfExists('tutor_applications');
     }

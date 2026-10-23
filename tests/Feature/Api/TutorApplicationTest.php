@@ -91,7 +91,38 @@ class TutorApplicationTest extends TestCase
         $this->actingAs($admin)->postJson("/api/admin/tutor-applications/{$application->id}/approve")->assertOk();
         $this->assertTrue($student->fresh()->hasRole(Role::STUDENT));
         $this->assertTrue($student->fresh()->hasRole(Role::TUTOR));
+        $this->actingAs($student)->getJson('/api/tutor-applications')->assertOk()->assertJsonCount(1, 'data');
         $this->actingAs($admin)->postJson("/api/admin/tutor-applications/{$application->id}/approve")->assertUnprocessable();
+    }
+
+    public function test_admin_cannot_review_their_own_tutor_application(): void
+    {
+        $adminApplicant = $this->userWithRole(Role::ADMIN);
+        $application = TutorApplication::factory()->for($adminApplicant, 'applicant')->create();
+
+        $this->actingAs($adminApplicant)
+            ->postJson("/api/admin/tutor-applications/{$application->id}/approve")
+            ->assertForbidden();
+        $this->actingAs($adminApplicant)
+            ->postJson("/api/admin/tutor-applications/{$application->id}/reject", ['reason' => 'A sufficiently detailed reason.'])
+            ->assertForbidden();
+        $this->assertDatabaseHas('tutor_applications', ['id' => $application->id, 'status' => TutorApplication::PENDING]);
+    }
+
+    public function test_only_admin_can_list_pending_tutor_applications(): void
+    {
+        $student = $this->userWithRole(Role::STUDENT);
+        $tutor = $this->userWithRole(Role::TUTOR);
+        $admin = $this->userWithRole(Role::ADMIN);
+        $application = TutorApplication::factory()->for($student, 'applicant')->create();
+
+        $this->getJson('/api/admin/tutor-applications')->assertUnauthorized();
+        $this->actingAs($student)->getJson('/api/admin/tutor-applications')->assertForbidden();
+        $this->actingAs($tutor)->getJson('/api/admin/tutor-applications')->assertForbidden();
+        $this->actingAs($admin)->getJson('/api/admin/tutor-applications')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $application->id);
     }
 
     public function test_rejection_is_saved_with_reason_and_cannot_be_repeated(): void
