@@ -8,6 +8,10 @@ function Mark() {
 
 export function SiteLayout({ children }) {
   const { user, logout } = useAuth();
+  const roles = user?.roles || [];
+  const isStudent = roles.includes('student');
+  const isTutor = roles.includes('tutor');
+  const isAdmin = roles.includes('admin');
   const navigate = useNavigate();
   const [logoutError, setLogoutError] = useState('');
   async function handleLogout() {
@@ -19,7 +23,7 @@ export function SiteLayout({ children }) {
     <header className="site-header"><div className="nav-wrap"><Mark />
       <nav aria-label="Main navigation" className="main-nav">
         <NavLink to="/" end>Home</NavLink>
-        {user ? <><NavLink to="/dashboard">Dashboard</NavLink><button className="nav-action" onClick={handleLogout}>Sign out</button></> : <><NavLink to="/login">Sign in</NavLink><Link className="button button-small" to="/register">Get started <span aria-hidden="true">↗</span></Link></>}
+        {user ? <><NavLink to="/dashboard">Dashboard</NavLink>{isStudent && <NavLink to="/tutors">Find Tutors</NavLink>}{isTutor && <NavLink to="/tutor-offerings">Manage My Teaching Subjects</NavLink>}{isAdmin && <NavLink to="/admin/subjects">Manage Subjects</NavLink>}<button className="nav-action" onClick={handleLogout}>Sign out</button></> : <><NavLink to="/login">Sign in</NavLink><Link className="button button-small" to="/register">Get started <span aria-hidden="true">↗</span></Link></>}
       </nav>
     </div></header>
     <main>{logoutError && <div className="section-wrap"><p className="error-box" role="alert">{logoutError}</p></div>}{children}</main>

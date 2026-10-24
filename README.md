@@ -4,7 +4,7 @@ Bachelor thesis project: **Design and Development of a Peer Tutoring Management 
 
 ## Current implementation snapshot (2026-10-24)
 
-The Laravel backend implements registration/login, role membership, subjects used for tutor applications, tutor application/review, and user/tutor profile APIs. The separate React + Vite frontend provides a landing page, registration, login, dashboard, and user/tutor profile forms. Tutor search, availability, bookings, session completion, reviews, chat, notifications, and administration statistics remain planned. The project owner reports that browser registration, session persistence, logout, and dashboard protection were manually verified; profile browser flows have not yet been checked. The latest Laravel suite run completed 26 tests and 99 assertions against isolated SQLite `:memory:`. Phase 5 profile migrations are new and have not been applied to PostgreSQL.
+The Laravel backend implements registration/login, role membership, subject catalogue and tutor application/review, user/tutor profile APIs, email-based password reset, tutor subject offerings, and a student-accessible tutor directory API. The separate React + Vite frontend provides profile display/edit screens, password recovery pages, tutor directory/search/detail pages, and tutor offering management in addition to authentication. Availability, bookings, session completion, reviews, chat, notifications, and administration statistics remain planned. Browser registration, session persistence, logout, and dashboard protection were previously manually verified; this increment's authenticated flows have automated tests but have not been fully manually checked in a browser. The latest Laravel suite run completed 55 tests and 308 assertions against isolated SQLite `:memory:`; 16 frontend tests passed. As of 2026-10-24, migration status confirmed all migrations through `create_tutor_subjects_table` have run against the configured PostgreSQL database.
 
 ## Phase 1: backend foundation
 
@@ -18,7 +18,7 @@ The backend is Laravel 13 with PostgreSQL. The React frontend is a separate Vite
 4. Create a PostgreSQL database for this application and set `DB_CONNECTION=pgsql`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, and `DB_PASSWORD` in the ignored local `.env`.
 5. Set `CORS_ALLOWED_ORIGINS` to the exact React origin. The default development origin is `http://localhost:5173`; use the matching backend origin `http://localhost:8000` in the React API client. Keep the host names consistent (`localhost` with `localhost`, or `127.0.0.1` with `127.0.0.1`) for cookie authentication.
 6. Configure `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD` only in local `.env` when ready to provision an admin. Use a unique password of at least 16 characters. The seeder refuses to promote an existing non-admin account.
-7. Review the migration list first. The project owner reports that the existing migrations are already applied. Phase 5 added two profile migrations, which have not been run against PostgreSQL. Check the database target and migration status before applying them; see the Phase 5 migration instructions below.
+7. Before applying any future migration, verify the database target and pending migration list. The profile migrations and the tutor-offerings migration are confirmed applied to the configured development database as of 2026-10-24.
 8. Seed standard roles with `php artisan db:seed --class=Database\Seeders\RoleSeeder`. When ready, provision the first administrator separately with `php artisan db:seed --class=Database\Seeders\InitialAdminSeeder --no-interaction`.
 
 Do not run `migrate:fresh` or `db:wipe` against a database containing data.
@@ -58,7 +58,7 @@ Profile reads use `200`; updating the current user profile returns `200`, while 
 
 The role seeder is idempotent. Standard role creation is part of the ordinary `DatabaseSeeder`; initial-admin provisioning is intentionally separate.
 
-The Phase 5 migrations add nullable profile fields to `users` and create `tutor_profiles` with one unique foreign key to `users`. The approval action creates the tutor profile in the same transaction as the role grant. The profile fields and relationship were exercised by the SQLite in-memory feature suite; these new migrations have not been run against PostgreSQL.
+The profile migrations add nullable profile fields to `users` and create `tutor_profiles` with one unique foreign key to `users`. The approval action creates the tutor profile in the same transaction as the role grant. The profile and tutor-offerings migrations are applied to the configured PostgreSQL database, as confirmed by `artisan migrate:status` during the current increment.
 
 Before applying them, confirm that the local Laravel configuration targets the intended `peer_tutoring` database and inspect the two migration files. Then review pending status and SQL preview using the project's explicit PHP 8.3 executable:
 
@@ -67,13 +67,13 @@ Before applying them, confirm that the local Laravel configuration targets the i
 & 'C:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe' artisan migrate --pretend
 ```
 
-After reviewing those results and approving the target, apply pending migrations with:
+After reviewing those results and confirming the target is correct, apply intended pending migrations with:
 
 ```powershell
 & 'C:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe' artisan migrate
 ```
 
-No migration command was run as part of this phase.
+The tutor offerings migration creates only a new table and constraints; it was applied separately after reviewing its PostgreSQL SQL preview. Continue to inspect pending migrations before applying future schema changes.
 
 ## Tests
 
@@ -85,7 +85,19 @@ PHPUnit is configured to force `APP_ENV=testing`, SQLite `:memory:`, and a blank
 
 The command does not change the PHP configuration. Confirm the reported database driver is SQLite before running the suite. Never point tests at the development PostgreSQL database.
 
-The suite was verified during Phase 5 on 2026-10-24: **26 tests passed, 99 assertions**.
+The latest backend verification on 2026-10-24: **55 tests passed, 308 assertions**. Frontend verification: **16 Vitest tests passed** and the Vite production build succeeded.
+
+## Account recovery and tutor subject offerings
+
+The API supports Laravel's password broker through `POST /api/password/forgot` and `POST /api/password/reset`. Reset tokens are broker-managed, expire after 60 minutes, are throttled, and are invalidated after a successful password reset. Reset links point to `FRONTEND_URL/reset-password`; the default local frontend URL is `http://localhost:5173`. The email field is read-only in profile pages. Password reset does not change the Sanctum cookie authentication flow. Reset requests use a neutral response that does not disclose whether an account exists and explicitly says delivery is not confirmed. A local `log` or non-test `array` mailer, SMTP placeholders, or a failover mailer that could silently fall back to `log` returns a generic configuration error before account lookup. When a configured provider rejects a delivery, the response stays neutral to avoid exposing whether the account exists; the failure is logged without the email address or token, and the page tells users to ask the administrator to check provider settings.
+
+The `.env.example` contains deliberately invalid SMTP placeholders and must not be used unchanged to send email. For real delivery, replace those placeholders in the ignored local `.env` with the provider's `MAIL_MAILER=smtp`, `MAIL_SCHEME` (usually `tls`), `MAIL_HOST`, `MAIL_PORT` (usually `587` for STARTTLS), `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS`, and `MAIL_FROM_NAME` values. Keep `FRONTEND_URL` set to the React origin so the email opens `/reset-password?token=…&email=…`. Never put real credentials in tracked files or frontend `VITE_*` variables. SMTP delivery has not been verified until a real provider is configured and an authorized mailbox receives a link.
+
+Tutor subject offerings are distinct from subject choices preserved on tutor applications. The additive `tutor_subjects` migration links an approved `tutor_profiles` record to a catalogue `subjects` record, with a unique tutor/subject pair and an optional teaching-focus description. Apply this migration only after confirming the configured database target and reviewing `php artisan migrate:status` and `php artisan migrate --pretend`; then use `php artisan migrate`. Do not use a database reset command. Authenticated approved tutors manage `/api/tutor-profile/offerings`; students use `GET /api/tutors` to browse approved tutor profiles and their active subject offerings, and `GET /api/tutors/{tutorProfile}` for one public profile. In the React application, students open **Find Tutors** from the navigation or dashboard; approved tutors open **Manage My Teaching Subjects**; administrators retain the separate **Manage Subjects** catalogue page. Search by tutor name or subject and the subject filter combine over real API results.
+
+Password recovery pages are `/forgot-password` and `/reset-password`. Backend feature tests fake Laravel notifications and use PHPUnit's isolated SQLite in-memory configuration; they do not send real email or access the configured PostgreSQL database.
+
+In `frontend/`, run `npm test` for the Vitest + Testing Library UI tests, or `npm run build` for the production build.
 
 ## Current scope limits
 

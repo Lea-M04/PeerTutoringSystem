@@ -19,6 +19,13 @@ class Subject extends Model
         return $this->belongsToMany(TutorApplication::class)->withTimestamps();
     }
 
+    public function tutorProfiles(): BelongsToMany
+    {
+        return $this->belongsToMany(TutorProfile::class, 'tutor_subjects')
+            ->withPivot(['id', 'description'])
+            ->withTimestamps();
+    }
+
     protected function casts(): array
     {
         return [

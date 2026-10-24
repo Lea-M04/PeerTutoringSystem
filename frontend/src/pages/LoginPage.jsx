@@ -20,6 +20,6 @@ export default function LoginPage() {
         <label className="field-label" htmlFor="email">Email address</label><input id="email" name="email" type="email" autoComplete="email" required maxLength="255" value={values.email} onChange={update} placeholder="you@university.edu" />
         <label className="field-label" htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete="current-password" required value={values.password} onChange={update} placeholder="Enter your password" />
         <button className="button form-submit" type="submit" disabled={busy}>{busy ? <><span className="spinner spinner-light" /> Signing in…</> : <>Sign in <span aria-hidden="true">↗</span></>}</button>
-      </form><p className="form-switch">New to the community? <Link to="/register">Create an account</Link></p>
+      </form><p className="form-switch"><Link to="/forgot-password">Forgot Password?</Link></p><p className="form-switch">New to the community? <Link to="/register">Create an account</Link></p>
     </div></section>;
 }
