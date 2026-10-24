@@ -72,11 +72,11 @@ The requirements below are intended system behavior. **Current** status is asses
 | **FR-01** | The system shall allow a guest to register an account and shall assign the Student role through a trusted server-side process. |
 | **FR-02** | The system shall authenticate users and provide login and logout. The browser client shall use the agreed first-party session-cookie flow. |
 | **FR-03** | The system shall allow a user to be both a Student and a Tutor. Tutor approval shall add the Tutor role and preserve the Student role. |
-| **FR-04** | The system shall provide a student profile. The profile fields and editability rules are unresolved. |
+| **FR-04** | The system shall provide a self-managed user profile with first name, last name, faculty or university, study program, and a short biography. The account email remains read-only in this phase. |
 | **FR-05** | A Student shall submit a tutor application containing motivation and one or more proposed active subjects. The user identity shall come from the authenticated session, not from client input. |
 | **FR-06** | The system shall allow at most one pending tutor application per user. It shall preserve rejected applications and allow a new application after rejection. |
 | **FR-07** | An authorized Administrator shall list and review pending applications. Approval shall grant Tutor role membership. Rejection shall require a non-empty reason. A user shall not review their own application, and reviewed applications shall not be reviewed again. |
-| **FR-08** | The system shall provide tutor profiles and allow approved tutors to select subjects. Profile fields, subject approval rules, and whether tutor subject offerings are separate from application subjects remain unresolved. |
+| **FR-08** | The system shall provide a tutor-only profile with a short tutoring biography for users granted the Tutor role through approval. Tutor subject offerings remain a separate future feature from subjects recorded on tutor applications. |
 | **FR-09** | Tutors shall define availability and students shall be able to view it. Availability shall use fixed slot durations of 30, 60, or 90 minutes. Recurrence, time zones, lead times, and conflict rules remain unresolved. |
 | **FR-10** | Students shall request tutoring session bookings. Tutors shall be able to confirm or reject a pending request. The system shall prevent conflicting bookings according to rules to be finalized. |
 | **FR-11** | A Student shall be able to cancel their booking only at least 12 hours before the scheduled start. A Tutor shall be able to cancel a booking and provide a reason. Exact status names and behavior at the 12-hour boundary require detailed acceptance criteria. |
@@ -87,6 +87,7 @@ The requirements below are intended system behavior. **Current** status is asses
 | **FR-16** | The system shall provide administrative management and basic dashboard statistics. The managed entities, metrics, and reporting permissions require approval. |
 | **FR-17** | The system shall expose the frontend's required operations through the Laravel REST API, with consistent validation errors and server-side authorization. |
 | **FR-18** | The system shall preserve relevant workflow history, including rejected tutor applications and booking/session decisions, subject to a retention policy to be decided. |
+| **FR-19** | The system shall allow students to browse subjects and search/browse approved tutors and their subject offerings. Search filters, guest visibility, and ranking remain unresolved. |
 
 ## 6. Non-functional requirements
 
@@ -169,7 +170,7 @@ React.js + Vite  --HTTP/REST-->   Laravel REST API  ------------------>   Postgr
 - **Data tier:** PostgreSQL stores account, role, application, subject, booking, chat, review, and notification data as those phases are implemented.
 - **Communication:** Normal browser operations follow React → HTTP/REST → Laravel → PostgreSQL and return through Laravel as JSON/HTTP responses. For chat, a later WebSocket/broadcast transport may connect the React client to Laravel-managed channels; channel authorization, persistence, and business decisions remain in Laravel. A WebSocket connection must not bypass the application tier or expose database access.
 
-The current repository does not yet contain the React presentation tier. Its Vite setup is the Laravel scaffold's asset build, not a React app.
+The repository contains both the Laravel root application and a separate React + Vite application in `frontend/`. Laravel's original Blade and Vite scaffold remains at the repository root; it has not been removed or repurposed. The React client calls the Laravel REST API and has no direct PostgreSQL access. The backend's `/` route still serves Laravel's welcome Blade view, while Vite serves the React application on its own development origin.
 
 ## 9. Technology stack
 
@@ -177,8 +178,8 @@ The current repository does not yet contain the React presentation tier. Its Vit
 | --- | --- | --- |
 | Backend/API | Laravel 13 | `composer.lock` resolves Laravel Framework 13.38.0; controllers/routes exist for the initial backend slice. |
 | PHP | PHP 8.3 or newer | `composer.json` requires `^8.3`; project environment previously verified PHP 8.3.36. |
-| Frontend | React.js with Vite | Required target. Current `package.json` has Vite and Laravel Vite/Tailwind plugins but no React dependencies or React app. |
-| Database | PostgreSQL | Required target and PostgreSQL migration support is present. `.env.example` currently defaults to SQLite; the actual ignored `.env` was intentionally not inspected for this document. |
+| Frontend | React.js with Vite | Separate JavaScript application exists in `frontend/`; installed versions verified by `npm ls` are React/React DOM 19.3.1, React Router 7.18.4, and Vite 8.3.5. The root Laravel Vite/Tailwind setup remains separate and intact. |
+| Database | PostgreSQL | Required target and PostgreSQL migration support is present. The current `.env.example` defaults to `pgsql`; the real ignored `.env` was intentionally not inspected. |
 | SPA authentication | Laravel Sanctum cookie-based SPA authentication | `laravel/sanctum` 4.3.3 is in Composer dependencies; Laravel stateful API middleware, CSRF route integration, and CORS configuration exist. |
 | Real-time messaging | WebSockets via a Laravel-compatible broadcaster | Required for intended chat; package, deployment topology, and configuration are not selected or implemented. |
 | Tests | PHPUnit | PHPUnit 12.5 is locked; project tests force an isolated SQLite in-memory connection. |
@@ -195,6 +196,10 @@ Version numbers are evidence of the checked repository lock/configuration, not a
 - **subjects** — unique subject name and active flag.
 - **tutor_applications** — applicant, motivation, status, reviewer, review time, rejection reason, timestamps. A partial unique index limits each user to one pending application.
 - **subject_tutor_application** — many-to-many proposed subject links for an application.
+- **User profile fields** — the Phase 5 migration adds nullable first name, last name, faculty/university, study program, and biography columns to the existing `users` table; the existing `name` field is retained for compatibility.
+- **tutor_profiles** — the Phase 5 migration creates an optional one-to-one tutor biography row with a unique, foreign-keyed `user_id`. The approval action creates it transactionally when it grants the Tutor role. Existing approved tutors can receive an empty profile on first update.
+
+The Phase 5 migrations are present in source but have **not been applied to the PostgreSQL database during this phase**. The project owner reported that the prior migrations had been applied successfully before this phase; that database state was not independently queried here.
 
 ### Intended relationships
 
@@ -203,11 +208,34 @@ User *---* Role
 User 1---* TutorApplication (applicant)
 User 1---* TutorApplication (reviewer, optional)
 TutorApplication *---* Subject
+User 1---0..1 TutorProfile
 ```
 
 ### Proposed future entities (not implemented)
 
-To meet the functional scope, later design increments are expected to add entities for student/tutor profile details, tutor availability slots, bookings/sessions, reviews, conversations/messages, and notifications. This is a conceptual proposal, not an existing schema. A decision is needed on whether a tutoring booking and its completed session are one lifecycle record or separate related records. Conversation-to-booking association and notification storage/retention are also unresolved.
+These are design recommendations only; no corresponding migrations or models exist yet. Reuse `users` and `subjects` rather than introducing duplicate identity or subject tables.
+
+- **Tutor profile:** one-to-one with `users` (unique `user_id`); exists only for approved tutors. The basic student/user profile fields are implemented on `users`; add a separate student profile entity only if later requirements justify it.
+- **Tutor subject offerings:** many-to-many between the tutor profile/user and existing `subjects`, separate from `subject_tutor_application`. Application subjects are historical evidence of what was proposed; approved offerings describe the tutor's current catalogue.
+- **Availability slots:** belong to a tutor; store concrete start/end times and enforce the agreed 30/60/90-minute duration rule. Recurrence, time zone, lead time, and whether slots are reusable or consumed by a booking must be decided before schema design.
+- **Bookings:** belong to one student, one tutor, one subject, and the selected availability/time. Store the booking state and actor-specific decision/cancellation data needed to preserve request, acceptance/rejection, and cancellation history. Add database-backed protections against overlapping confirmed bookings; the exact strategy depends on whether availability is represented as fixed slot rows or arbitrary intervals.
+- **Tutoring sessions:** recommended as a one-to-one record created from an accepted booking if session execution/completion metadata differs from booking decisions. Alternatively a single booking lifecycle record may suffice; decide before implementation to avoid duplicating status or schedule data.
+- **Reviews:** belong to a completed session and its student reviewer/tutor recipient. Use a rating constraint of 1–5 and a unique session/reviewer constraint if one review per student per session is approved. The backend must enforce completion eligibility and prevent reviews of another user's session.
+- **Conversations and messages:** a conversation represents one eligible student–tutor pair (optionally linked to a qualifying booking/session); messages belong to a conversation and sender. Persist text and timestamps, constrain senders to participants in application authorization, and keep access private. The eligibility event and duplicate-conversation policy remain unresolved.
+- **Notifications:** Laravel's notification persistence can associate each item with its recipient user and store type/data/read timestamp. Define events, retention and whether email is enabled before adding delivery behavior. Admin statistics should be derived from domain records unless a demonstrated performance need justifies stored aggregates.
+
+Proposed relationship sketch:
+
+```text
+User 1---0..1 TutorProfile; TutorProfile *---* Subject
+TutorProfile 1---* AvailabilitySlot
+Student(User) 1---* Booking *---1 Tutor(User); Booking *---1 Subject
+Booking 1---0..1 TutoringSession; TutoringSession 1---0..1 Review
+Conversation 1---* Message; Message *---1 User(sender)
+User 1---* Notification
+```
+
+These relationships do not settle booking/session status names, slot recurrence, interval conflict handling, review text/visibility, chat eligibility, or notification lifecycle.
 
 ## 11. API and authentication approach
 
@@ -219,6 +247,9 @@ To meet the functional scope, later design increments are expected to add entiti
 | `POST /login` | Public, rate-limited session login. |
 | `POST /logout` | Authenticated session logout. |
 | `GET /api/user` | Authenticated current-user data and roles. |
+| `PATCH /api/user` | Authenticated user updates their own profile fields; account email and roles are prohibited. |
+| `GET /api/tutor-profile` | Authenticated Tutor reads their own tutor biography. |
+| `PATCH /api/tutor-profile` | Authenticated Tutor creates or updates their own tutor biography. |
 | `GET /api/subjects` | Authenticated list of active subjects. |
 | `POST /api/tutor-applications` | Authenticated Student submits motivation and active subject IDs. |
 | `GET /api/tutor-applications` | Authenticated Student gets their own application history. |
@@ -232,7 +263,7 @@ These paths are present in `routes/web.php` and `routes/api.php`; tests exercise
 
 The current approach is Sanctum's first-party SPA cookie/session model, not personal access tokens stored in the browser. Laravel's `statefulApi()` middleware is enabled. The frontend should first obtain the CSRF cookie at `/sanctum/csrf-cookie`, then make credentialed requests to the backend and send the CSRF token as required by the browser/Laravel client integration. CORS has an explicit `CORS_ALLOWED_ORIGINS` setting and credential support; the default is `http://localhost:5173`. Sanctum's default stateful list includes local `localhost`/`127.0.0.1` React and backend ports. Production origins and cookie settings must be deliberately configured.
 
-The existing PHPUnit tests authenticate primarily with Laravel's `actingAs`; they do not by themselves prove the browser's end-to-end CSRF, CORS, and cookie behavior. Add an integration/manual acceptance check when the React app exists.
+The existing PHPUnit tests authenticate primarily with Laravel's `actingAs`; they do not by themselves prove the browser's end-to-end CSRF, CORS, and cookie behavior. The React API client requests the CSRF cookie, sends credentialed requests, and uses the configured API routes, but browser authentication has not been verified end-to-end.
 
 ## 12. Security and authorization rules
 
@@ -269,8 +300,8 @@ Recommended iteration cycle:
 | --- | --- | --- |
 | **0 — Requirements and environment baseline** | Confirm detailed rules, local PHP/dependency configuration, PostgreSQL target, Git safety, and React/API origins. | Approved requirements and safe repeatable developer setup. |
 | **1 — Backend foundation and tutor applications** | Roles, subjects, student registration/session authentication, tutor application submission/history, admin review, role grant, API resources, initial tests. | Current initial slice meets its tested acceptance criteria; migrations are reviewed before any non-test database is migrated. |
-| **2 — Separate React/Vite client and authenticated shell** | Create separate React application, API client, CSRF-cookie/session flow, sign-in/register/current-user handling, role-aware navigation. | Browser integration confirms cookie, CSRF, CORS, 401/403, and logout behavior without localStorage tokens. |
-| **3 — Profiles and tutor catalogue** | Define profile fields, tutor profile and subject offering, public/private discovery rules, and corresponding pages/API/tests. | Users can manage permitted profile data; only approved tutors appear/offer tutoring as approved by final rules. |
+| **2 — Separate React/Vite client and authenticated shell** | **Foundation implemented:** separate frontend, landing/register/login, protected dashboard placeholder, API client, CSRF-cookie/session request handling. | Remaining: browser integration confirms cookie, CSRF, CORS, 401/403, and logout behavior without localStorage tokens. |
+| **3 — Profiles, subjects and tutor catalogue** | **User and tutor profile foundations implemented:** profile fields/endpoints, tutor-only profile endpoint, React profile forms. Continue with subject browsing, tutor subject offerings and search after the new PostgreSQL migrations are reviewed and applied. | Profile behavior passes isolated tests; approved tutors manage only their own tutor profile. Discovery scope and profile API behavior are verified. |
 | **4 — Availability and booking** | Model 30/60/90-minute slots; define time zone, recurrence and conflict rules; request/confirm/reject/cancel flows and 12-hour student cancellation boundary. | Tested transitions prevent double booking and enforce actor-specific cancellation behavior, including boundary cases. |
 | **5 — Session completion and reviews** | Tutor-controlled completion, eligible Student rating (1–5), review visibility and duplicate/edit policy. | Tests enforce completion and review eligibility and preserve session history. |
 | **6 — Private chat and notifications** | Select Laravel-compatible WebSocket broadcaster; define conversation eligibility; authorize channels; persist text messages; implement in-app notifications and optional email. | Tests prove isolation, persistence, authorized delivery, and notification behavior. |
@@ -280,7 +311,7 @@ Recommended iteration cycle:
 
 Status below is based on inspected files and tests. “Implemented” means repository code and tests support the stated behavior; it does not mean the PostgreSQL development database has been migrated or a browser flow has been demonstrated.
 
-### Implemented (initial backend slice)
+### Implemented
 
 - Laravel 13 backend and API route loading; Laravel 13.38.0 is locked, and `composer.json` requires PHP `^8.3`.
 - Sanctum 4.3.3 dependency, stateful API middleware, CORS configuration, session login/logout, public Student-only registration, and current-user API response.
@@ -290,20 +321,24 @@ Status below is based on inspected files and tests. “Implemented” means repo
 - Student application submission and own history, active subject validation, Admin pending list, approve/reject authorization, required rejection reason, role retention on approval, and reapplication history behavior in application logic.
 - Separate initial-admin seeder with environment/config input, password hashing, validation, and refusal to promote an existing ordinary user.
 - Feature tests cover authentication boundaries, registration role protection, application submission/validation, inactive subjects, duplicate pending/reapplication, review access/reason/repeat review, role retention, rollback on simulated role-write failure, and prevention of accidental admin promotion.
-- PHPUnit configuration forces testing environment, a test-only application key, SQLite `:memory:`, and a blank DB URL. The recorded prior phase run completed **17 tests / 36 assertions** successfully on SQLite; this document-only task did not rerun them.
+- PHPUnit configuration forces testing environment, a test-only application key, SQLite `:memory:`, and a blank DB URL. On 2026-10-24, the suite completed **26 tests / 99 assertions** successfully using the PHP 8.3.36 executable and process-local SQLite extension overrides.
+- Separate JavaScript React + Vite application in `frontend/`, with landing, registration, login, protected dashboard placeholder, not-found page, React Router, responsive styles, and centralized Laravel API client. The frontend has a production build script and its dependencies are locked in its own `package-lock.json`.
+- User profile API and frontend page for first/last name, faculty/university, study program, and biography. The existing email is read-only; the existing account `name` is kept synchronized with first and last name.
+- Tutor profile model, one-to-one migration, role-gated self-service API, React page, and transactional profile creation on tutor approval. A student cannot grant themselves Tutor through these profile endpoints.
+- Project owner reports that PostgreSQL migrations were applied successfully before this phase and that registration, refreshed-session persistence, logout, and dashboard protection were manually checked. Those facts were not independently retested here. New profile migrations remain unapplied to PostgreSQL.
 
 ### Partially implemented
 
-- **Authentication:** Server routes and middleware are implemented, but end-to-end browser cookie/CSRF/CORS behavior has not been verified because the React app does not exist. Registration and login route tests do not replace this integration check.
+- **Authentication:** Server routes, middleware, and a React session/CSRF API client are implemented. The project owner reports that registration, session persistence after refresh, logout, and dashboard protection were manually verified. The CSRF/CORS browser exchange was not independently retested in this phase. Frontend startup session failures currently appear only in the developer console rather than as visible status feedback.
+- **Profiles:** New user/tutor profile code and feature tests are implemented. The migration changes were verified by PHPUnit on SQLite `:memory:`; the two new migrations still need review and application to the intended PostgreSQL database. Browser profile forms were not manually tested against the live API in this phase.
 - **Tutor application review:** Core workflow is implemented, but conditional database constraints for all review metadata are absent; API logic enforces the expected flow. Review authorization of an Admin who is also the applicant is denied by current policy, which is stricter than the minimum Student-only restriction.
-- **PostgreSQL setup:** PostgreSQL-compatible migrations/configuration and a previously confirmed local PostgreSQL connection are known from earlier environment inspection. The current database's migration state was not queried for this document.
-- **Frontend build tooling:** Vite and Laravel Vite/Tailwind assets exist in the root project. They are not a separate React/Vite application.
-- **Documentation:** The README documents the first backend slice and setup, but this specification becomes the broader product requirements baseline. The example environment still defaults to SQLite even though PostgreSQL is the required development target; configure the ignored local `.env` deliberately before a development migration. Composer's `setup` script includes `artisan migrate --force`, so do not run that script until the database target and migration plan have been reviewed.
+- **PostgreSQL setup:** Migrations are written for PostgreSQL as well as SQLite for tests, and `.env.example` currently defaults to PostgreSQL. The project owner reports that existing migrations were run successfully before Phase 5; this audit did not inspect the real `.env`, connect to PostgreSQL, or verify the database migration state. The two new Phase 5 migrations remain pending. Composer's `setup` script includes `artisan migrate --force`, so do not run that script until the database target and migration plan have been reviewed.
+- **Frontend/API integration:** The client uses existing routes and cookie/CSRF mechanics by inspection, and the frontend exists separately. No browser route rendering, cookie login, CORS, or CSRF round trip was verified in this audit. The frontend has no automated test or lint script.
+- **Laravel scaffold:** Blade welcome view and root Laravel Vite/Tailwind configuration remain. They are separate from the React frontend and are not known to conflict with its own Vite server; the Laravel `/` route still renders Blade.
 
 ### Not yet implemented
 
-- Separate React application and React pages.
-- Student and tutor profile workflows.
+- Subject browsing and tutor search/catalogue pages and API.
 - Tutor catalogue/search and tutor profile subject management.
 - Tutor availability and 30/60/90-minute scheduling.
 - Booking, confirmation/rejection, cancellation, 12-hour rule, and conflict prevention.
@@ -316,7 +351,7 @@ Status below is based on inspected files and tests. “Implemented” means repo
 
 ### Repository state observed during this inspection
 
-The working branch is `main` at commit `5e49fab` (`implement initial backend foundation and tutor applications`). The worktree was clean at inspection time. Local Git reports `main...origin/main [behind 1]`; this reflects the locally known remote-tracking reference and does not prove that GitHub was contacted or that the current remote is reachable. No remote operation was performed for this specification.
+At the start of the Phase 5 implementation, the current branch was `main` at commit `4c499e0`. `origin` was configured as `https://github.com/Lea-M04/PeerTutoringSystem.git` for fetch and push. The worktree already had uncommitted `.env.example`, README, and specification changes plus the untracked `frontend/` directory from earlier work. No GitHub fetch or push was performed. Phase 5 source and documentation changes are also unstaged; nothing was committed.
 
 ## 16. Testing strategy and acceptance criteria
 
@@ -339,6 +374,8 @@ The working branch is `main` at commit `5e49fab` (`implement initial backend fou
 6. Initial-admin provisioning fails safely for invalid configuration and never silently promotes an existing ordinary account.
 7. Test configuration is isolated from the development PostgreSQL database; no test command in this phase runs development migrations.
 8. Git staging/commit is a separate explicit action; `/laravel-temp/` and `.env` remain ignored.
+9. Authenticated users can view and update only their own basic profile; email and role fields cannot be changed through this endpoint.
+10. Only a user with the Tutor role can manage their own tutor profile; Admin approval adds that role and creates the tutor profile transactionally.
 
 Future phases must add acceptance criteria for each new requirement before declaring it complete. Record test commands and actual results; do not equate a README statement, migration file, or planned requirement with a working feature.
 

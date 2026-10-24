@@ -42,7 +42,15 @@ class TutorApplicationTest extends TestCase
             'motivation' => 'I have extensive experience helping classmates understand mathematics.',
             'subject_ids' => [$subject->id],
         ])->assertCreated()->assertJsonPath('data.status', 'pending');
-        $this->actingAs($student)->getJson('/api/tutor-applications')->assertOk()->assertJsonCount(1, 'data');
+        $this->actingAs($student)->getJson('/api/tutor-applications')->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.motivation', 'I have extensive experience helping classmates understand mathematics.')
+            ->assertJsonPath('data.0.subjects.0.id', $subject->id);
+        $this->assertDatabaseHas('tutor_applications', [
+            'user_id' => $student->id,
+            'motivation' => 'I have extensive experience helping classmates understand mathematics.',
+            'status' => TutorApplication::PENDING,
+        ]);
+        $this->assertFalse($student->fresh()->hasRole(Role::TUTOR));
     }
 
     public function test_missing_motivation_or_subjects_is_rejected(): void
@@ -81,6 +89,9 @@ class TutorApplicationTest extends TestCase
         $previousApplication->forceFill(['status' => TutorApplication::REJECTED, 'rejection_reason' => 'Please provide more detail.'])->save();
         $this->actingAs($student)->postJson('/api/tutor-applications', $payload)->assertCreated();
         $this->assertDatabaseCount('tutor_applications', 2);
+        $this->actingAs($student)->getJson('/api/tutor-applications')->assertOk()->assertJsonCount(2, 'data');
+        $this->assertDatabaseHas('tutor_applications', ['id' => $previousApplication->id, 'status' => TutorApplication::REJECTED]);
+        $this->assertFalse($student->fresh()->hasRole(Role::TUTOR));
     }
 
     public function test_admin_approval_retains_student_role_and_repeat_review_is_rejected(): void
@@ -91,6 +102,7 @@ class TutorApplicationTest extends TestCase
         $this->actingAs($admin)->postJson("/api/admin/tutor-applications/{$application->id}/approve")->assertOk();
         $this->assertTrue($student->fresh()->hasRole(Role::STUDENT));
         $this->assertTrue($student->fresh()->hasRole(Role::TUTOR));
+        $this->assertDatabaseHas('tutor_profiles', ['user_id' => $student->id]);
         $this->actingAs($student)->getJson('/api/tutor-applications')->assertOk()->assertJsonCount(1, 'data');
         $this->actingAs($admin)->postJson("/api/admin/tutor-applications/{$application->id}/approve")->assertUnprocessable();
     }
@@ -132,6 +144,8 @@ class TutorApplicationTest extends TestCase
         $application = TutorApplication::factory()->for($student, 'applicant')->create();
         $this->actingAs($admin)->postJson("/api/admin/tutor-applications/{$application->id}/reject", ['reason' => 'Please add more subject experience.'])
             ->assertOk()->assertJsonPath('data.status', TutorApplication::REJECTED);
+        $this->assertFalse($student->fresh()->hasRole(Role::TUTOR));
+        $this->assertDatabaseMissing('tutor_profiles', ['user_id' => $student->id]);
         $this->actingAs($admin)->postJson("/api/admin/tutor-applications/{$application->id}/reject", ['reason' => 'Second review attempt.'])
             ->assertUnprocessable();
     }
@@ -167,5 +181,6 @@ class TutorApplicationTest extends TestCase
         }
         $this->assertDatabaseHas('tutor_applications', ['id' => $application->id, 'status' => TutorApplication::PENDING, 'reviewer_id' => null]);
         $this->assertFalse($student->fresh()->hasRole(Role::TUTOR));
+        $this->assertDatabaseMissing('tutor_profiles', ['user_id' => $student->id]);
     }
 }

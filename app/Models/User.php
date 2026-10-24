@@ -9,10 +9,11 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'email', 'password'])]
+#[Fillable(['name', 'email', 'password', 'first_name', 'last_name', 'faculty_or_university', 'study_program', 'biography'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -27,6 +28,11 @@ class User extends Authenticatable
     public function tutorApplications(): HasMany
     {
         return $this->hasMany(TutorApplication::class);
+    }
+
+    public function tutorProfile(): HasOne
+    {
+        return $this->hasOne(TutorProfile::class);
     }
 
     public function hasRole(string $role): bool

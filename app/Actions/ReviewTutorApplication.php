@@ -27,7 +27,9 @@ class ReviewTutorApplication
 
             if ($status === TutorApplication::APPROVED) {
                 $tutorRole = Role::query()->where('name', Role::TUTOR)->firstOrFail();
-                $application->applicant->roles()->syncWithoutDetaching([$tutorRole->id]);
+                $tutor = $application->applicant;
+                $tutor->roles()->syncWithoutDetaching([$tutorRole->id]);
+                $tutor->tutorProfile()->firstOrCreate([]);
             }
 
             return $application->load(['applicant', 'subjects']);
