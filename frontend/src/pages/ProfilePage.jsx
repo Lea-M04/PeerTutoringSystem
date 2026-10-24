@@ -10,6 +10,7 @@ export default function ProfilePage() {
     last_name: user?.last_name || '',
     faculty_or_university: user?.faculty_or_university || '',
     study_program: user?.study_program || '',
+    year_of_study: user?.year_of_study || '',
     biography: user?.biography || '',
   });
   const [error, setError] = useState(null);
@@ -35,6 +36,7 @@ export default function ProfilePage() {
         last_name: savedProfile.last_name || '',
         faculty_or_university: savedProfile.faculty_or_university || '',
         study_program: savedProfile.study_program || '',
+        year_of_study: savedProfile.year_of_study || '',
         biography: savedProfile.biography || '',
       });
       setSuccess('Your profile has been saved.');
@@ -61,6 +63,7 @@ export default function ProfilePage() {
           <div><label className="field-label" htmlFor="last_name">Last name</label><input id="last_name" name="last_name" autoComplete="family-name" required maxLength="100" value={values.last_name} onChange={update} /></div>
           <div><label className="field-label" htmlFor="faculty_or_university">Faculty or university</label><input id="faculty_or_university" name="faculty_or_university" maxLength="180" value={values.faculty_or_university} onChange={update} /></div>
           <div><label className="field-label" htmlFor="study_program">Study program</label><input id="study_program" name="study_program" maxLength="180" value={values.study_program} onChange={update} /></div>
+          <div><label className="field-label" htmlFor="year_of_study">Year of study</label><input id="year_of_study" name="year_of_study" type="number" min="1" max="32767" step="1" value={values.year_of_study} onChange={update} /></div>
         </div>
         <label className="field-label" htmlFor="biography">Short biography</label>
         <textarea id="biography" name="biography" maxLength="1200" rows="5" value={values.biography} onChange={update} aria-describedby="biography-help" />

@@ -60,6 +60,7 @@ class ProfileTest extends TestCase
             'last_name' => 'Lovelace',
             'faculty_or_university' => 'Faculty of Science',
             'study_program' => 'Computer Science',
+            'year_of_study' => 2,
             'biography' => 'I enjoy collaborative problem solving.',
         ])->assertOk()
             ->assertJsonPath('data.first_name', 'Ada')
@@ -67,6 +68,7 @@ class ProfileTest extends TestCase
             ->assertJsonPath('data.name', 'Ada Lovelace')
             ->assertJsonPath('data.faculty_or_university', 'Faculty of Science')
             ->assertJsonPath('data.study_program', 'Computer Science')
+            ->assertJsonPath('data.year_of_study', 2)
             ->assertJsonPath('data.biography', 'I enjoy collaborative problem solving.');
 
         $this->assertDatabaseHas('users', [
@@ -77,6 +79,7 @@ class ProfileTest extends TestCase
             'last_name' => 'Lovelace',
             'faculty_or_university' => 'Faculty of Science',
             'study_program' => 'Computer Science',
+            'year_of_study' => 2,
             'biography' => 'I enjoy collaborative problem solving.',
         ]);
 
@@ -86,6 +89,7 @@ class ProfileTest extends TestCase
             ->assertJsonPath('data.last_name', 'Lovelace')
             ->assertJsonPath('data.faculty_or_university', 'Faculty of Science')
             ->assertJsonPath('data.study_program', 'Computer Science')
+            ->assertJsonPath('data.year_of_study', 2)
             ->assertJsonPath('data.biography', 'I enjoy collaborative problem solving.');
     }
 
@@ -98,9 +102,10 @@ class ProfileTest extends TestCase
             'last_name' => '',
             'faculty_or_university' => str_repeat('F', 181),
             'study_program' => ['not', 'a', 'string'],
+            'year_of_study' => 0,
             'biography' => str_repeat('B', 1201),
         ])->assertUnprocessable()
-            ->assertJsonValidationErrors(['first_name', 'last_name', 'faculty_or_university', 'study_program', 'biography']);
+            ->assertJsonValidationErrors(['first_name', 'last_name', 'faculty_or_university', 'study_program', 'year_of_study', 'biography']);
     }
 
     public function test_profile_update_cannot_target_another_user_or_change_email_or_roles(): void

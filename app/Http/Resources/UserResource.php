@@ -22,6 +22,7 @@ class UserResource extends JsonResource
             'last_name' => $this->last_name,
             'faculty_or_university' => $this->faculty_or_university,
             'study_program' => $this->study_program,
+            'year_of_study' => $this->year_of_study,
             'biography' => $this->biography,
             'roles' => $this->whenLoaded('roles', fn () => $this->roles->pluck('name')->values()),
         ];

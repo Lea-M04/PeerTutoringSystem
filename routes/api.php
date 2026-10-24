@@ -1,9 +1,11 @@
 <?php
 
+use App\Http\Controllers\Api\Admin\SubjectManagementController;
 use App\Http\Controllers\Api\Admin\TutorApplicationReviewController;
 use App\Http\Controllers\Api\AuthenticatedUserController;
 use App\Http\Controllers\Api\TutorApplicationController;
 use App\Http\Controllers\Api\TutorProfileController;
+use App\Models\Subject;
 use App\Models\TutorApplication;
 use App\Models\TutorProfile;
 use Illuminate\Support\Facades\Route;
@@ -25,9 +27,24 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->name('api.tutor-applications.store');
 
     Route::prefix('admin')->name('api.admin.')->group(function (): void {
+        Route::get('/subjects', [SubjectManagementController::class, 'index'])
+            ->can('viewAny', Subject::class)
+            ->name('subjects.index');
+        Route::post('/subjects', [SubjectManagementController::class, 'store'])
+            ->can('create', Subject::class)
+            ->name('subjects.store');
+        Route::patch('/subjects/{subject}', [SubjectManagementController::class, 'update'])
+            ->can('update', 'subject')
+            ->name('subjects.update');
+        Route::patch('/subjects/{subject}/status', [SubjectManagementController::class, 'updateStatus'])
+            ->can('update', 'subject')
+            ->name('subjects.status');
+
         Route::get('/tutor-applications', [TutorApplicationReviewController::class, 'index'])
             ->can('viewAny', TutorApplication::class)
             ->name('tutor-applications.index');
+        Route::get('/tutor-applications/{tutorApplication}/transcript', [TutorApplicationReviewController::class, 'downloadTranscript'])
+            ->name('tutor-applications.transcript');
         Route::post('/tutor-applications/{tutorApplication}/approve', [TutorApplicationReviewController::class, 'approve'])
             ->can('review', 'tutorApplication')
             ->name('tutor-applications.approve');

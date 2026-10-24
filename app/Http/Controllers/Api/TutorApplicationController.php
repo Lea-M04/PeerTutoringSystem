@@ -13,7 +13,11 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
+use Throwable;
 
 class TutorApplicationController extends Controller
 {
@@ -21,7 +25,7 @@ class TutorApplicationController extends Controller
     {
         Gate::authorize('viewAnyOwn', TutorApplication::class);
 
-        return TutorApplicationResource::collection($request->user()->tutorApplications()->with('subjects')->latest()->get());
+        return TutorApplicationResource::collection($request->user()->tutorApplications()->with('subjects')->orderByDesc('created_at')->orderByDesc('id')->get());
     }
 
     public function subjects()
@@ -35,19 +39,45 @@ class TutorApplicationController extends Controller
             throw ValidationException::withMessages(['application' => 'You already have a pending tutor application.']);
         }
 
+        $storedTranscriptPath = null;
+
         try {
-            $application = DB::transaction(function () use ($request): TutorApplication {
-                $application = $request->user()->tutorApplications()->create([
+            $application = DB::transaction(function () use ($request, &$storedTranscriptPath): TutorApplication {
+                $user = $request->user();
+                $user->forceFill([
+                    'faculty_or_university' => $request->validated('faculty_or_university'),
+                    'study_program' => $request->validated('study_program'),
+                    'year_of_study' => $request->validated('year_of_study'),
+                ])->save();
+
+                $application = $user->tutorApplications()->create([
                     'motivation' => $request->validated('motivation'),
                 ]);
+
+                $storedTranscriptPath = $request->file('transcript')->storeAs(
+                    "tutor-applications/{$application->id}",
+                    Str::uuid().'.pdf',
+                    'private',
+                );
+
+                if ($storedTranscriptPath === false) {
+                    throw new RuntimeException('The tutor application transcript could not be stored.');
+                }
+
+                $application->forceFill(['transcript_path' => $storedTranscriptPath])->save();
                 $application->subjects()->sync($request->validated('subject_ids'));
 
                 return $application->refresh()->load('subjects');
             });
-        } catch (QueryException $exception) {
-            if ($request->user()->tutorApplications()->where('status', TutorApplication::PENDING)->exists()) {
+        } catch (Throwable $exception) {
+            if ($storedTranscriptPath !== null) {
+                Storage::disk('private')->delete($storedTranscriptPath);
+            }
+
+            if ($exception instanceof QueryException && $request->user()->tutorApplications()->where('status', TutorApplication::PENDING)->exists()) {
                 throw ValidationException::withMessages(['application' => 'You already have a pending tutor application.']);
             }
+
             throw $exception;
         }
 

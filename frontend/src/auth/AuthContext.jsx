@@ -19,6 +19,7 @@ export function AuthProvider({ children }) {
   const value = useMemo(() => ({
     user,
     loading,
+    async refreshUser() { const result = await api.currentUser(); setUser(result.data); return result.data; },
     async updateProfile(values) { const result = await api.updateProfile(values); setUser(result.data); return result.data; },
     async login(values) { const result = await api.login(values); setUser(result.data); return result.data; },
     async register(values) { const result = await api.register(values); setUser(result.data); return result.data; },

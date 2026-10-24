@@ -4,6 +4,7 @@ import { PageLoader, SiteLayout } from './components/SiteLayout.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import AdminTutorApplicationsPage from './pages/AdminTutorApplicationsPage.jsx';
+import AdminSubjectsPage from './pages/AdminSubjectsPage.jsx';
 import LandingPage from './pages/LandingPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
@@ -23,6 +24,7 @@ export default function App() {
     <Route path="/tutor-profile" element={<ProtectedRoute><TutorProfilePage /></ProtectedRoute>} />
     <Route path="/tutor-application" element={<ProtectedRoute><TutorApplicationPage /></ProtectedRoute>} />
     <Route path="/admin/tutor-applications" element={<ProtectedRoute><AdminTutorApplicationsPage /></ProtectedRoute>} />
+    <Route path="/admin/subjects" element={<ProtectedRoute><AdminSubjectsPage /></ProtectedRoute>} />
     <Route path="*" element={<NotFoundPage />} />
   </Routes></SiteLayout>;
 }

@@ -35,6 +35,11 @@ class TutorApplicationPolicy
         return $user->id === $tutorApplication->user_id || $user->hasRole(Role::ADMIN);
     }
 
+    public function viewTranscript(User $user, TutorApplication $tutorApplication): bool
+    {
+        return $user->hasRole(Role::ADMIN) && $user->id !== $tutorApplication->user_id;
+    }
+
     /**
      * Determine whether the user can create models.
      */
