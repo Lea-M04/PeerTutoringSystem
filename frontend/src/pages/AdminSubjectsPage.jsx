@@ -84,11 +84,27 @@ export default function AdminSubjectsPage() {
     }
   }
 
+  async function deleteSubject(subject) {
+    if (!window.confirm(`Permanently delete “${subject.name}” if it has no linked tutor applications, offerings, or bookings? Linked subjects must be deactivated instead.`)) return;
+    setStatusBusyId(subject.id);
+    setError(null);
+    setSuccess('');
+    try {
+      await api.deleteSubject(subject.id);
+      setSubjects((current) => current.filter((item) => item.id !== subject.id));
+      setSuccess(`“${subject.name}” was deleted.`);
+    } catch (caught) {
+      setError(caught);
+    } finally {
+      setStatusBusyId(null);
+    }
+  }
+
   return <section className="profile-page subjects-page section-wrap">
     <Link className="text-link back-link" to="/dashboard"><span aria-hidden="true">←</span> Back to dashboard</Link>
     <span className="eyebrow">ADMINISTRATION</span>
     <h1>Manage <em>subjects.</em></h1>
-    <p className="profile-intro">Maintain the subject catalogue used by tutor applications. Inactive subjects stay in application history but are not offered for new applications.</p>
+    <p className="profile-intro">Maintain the global catalogue used by Tutor applications and offerings. Deactivate a linked subject to preserve its history; permanent deletion is limited to unused subjects.</p>
     {success && <p className="success-box" role="status">{success}</p>}
     <FormErrors error={error} />
     <div className="profile-panel subject-form-panel">
@@ -105,7 +121,7 @@ export default function AdminSubjectsPage() {
       <div className="subject-list-heading"><div><span className="eyebrow">SUBJECT CATALOGUE</span><h2 id="subject-list-heading">All subjects</h2></div><span className="subject-count">{subjects.length} {subjects.length === 1 ? 'subject' : 'subjects'}</span></div>
       {subjects.length === 0 ? <div className="profile-panel empty-state" role="status">No subjects have been created yet. Add the first subject above.</div> : <div className="subject-list">{subjects.map((subject) => <article className="subject-admin-card" key={subject.id}>
         <div className="subject-admin-content"><div className="subject-admin-title"><h3>{subject.name}</h3><span className={`application-status ${subject.is_active ? 'status-approved' : 'status-rejected'}`}>{subject.is_active ? 'Active' : 'Inactive'}</span></div><p>{subject.description || 'No description provided.'}</p></div>
-        <div className="subject-admin-actions"><button className="text-button" type="button" onClick={() => beginEdit(subject)}>Edit</button><button className={`button ${subject.is_active ? 'button-danger' : 'button-outline'}`} type="button" disabled={statusBusyId === subject.id} onClick={() => toggleStatus(subject)}>{statusBusyId === subject.id ? 'Saving…' : subject.is_active ? 'Deactivate' : 'Activate'}</button></div>
+        <div className="subject-admin-actions"><button className="text-button" type="button" onClick={() => beginEdit(subject)}>Edit</button><button className={`button ${subject.is_active ? 'button-danger' : 'button-outline'}`} type="button" disabled={statusBusyId === subject.id} onClick={() => toggleStatus(subject)}>{statusBusyId === subject.id ? 'Saving…' : subject.is_active ? 'Deactivate' : 'Activate'}</button><button className="text-button" type="button" disabled={statusBusyId === subject.id} onClick={() => deleteSubject(subject)}>Delete if unused</button></div>
       </article>)}</div>}
     </section>
   </section>;

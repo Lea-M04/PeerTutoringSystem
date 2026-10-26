@@ -9,6 +9,26 @@ use App\Models\User;
 
 class TutorSubjectPolicy
 {
+    public function adminViewAny(User $user): bool
+    {
+        return $user->hasRole(Role::ADMIN);
+    }
+
+    public function adminCreate(User $user): bool
+    {
+        return $user->hasRole(Role::ADMIN);
+    }
+
+    public function adminUpdate(User $user, TutorSubject $tutorSubject): bool
+    {
+        return $user->hasRole(Role::ADMIN);
+    }
+
+    public function adminDelete(User $user, TutorSubject $tutorSubject): bool
+    {
+        return $user->hasRole(Role::ADMIN);
+    }
+
     public function viewAny(User $user): bool
     {
         return $user->hasRole(Role::TUTOR)

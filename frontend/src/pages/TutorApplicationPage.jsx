@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router';
 import { api } from '../api/client.js';
 import { useAuth } from '../auth/AuthContext.jsx';
+import { isApprovedTutor } from '../auth/roles.js';
 import { FormErrors, PageLoader } from '../components/SiteLayout.jsx';
 
 const maxTranscriptMb = Number(import.meta.env.VITE_TUTOR_APPLICATION_TRANSCRIPT_MAX_MB || 10);
@@ -13,7 +14,7 @@ function ApplicationStatus({ status }) {
 export default function TutorApplicationPage() {
   const { user, refreshUser } = useAuth();
   const roles = user?.roles || [];
-  const canApply = roles.includes('student') && !roles.includes('tutor') && !roles.includes('admin');
+  const canApply = roles.includes('student') && !isApprovedTutor(user) && !roles.includes('admin');
   const [subjects, setSubjects] = useState([]);
   const [applications, setApplications] = useState([]);
   const [values, setValues] = useState({

@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { api } from '../api/client.js';
 import { useAuth } from '../auth/AuthContext.jsx';
+import { isApprovedTutor } from '../auth/roles.js';
 import { FormErrors, PageLoader } from '../components/SiteLayout.jsx';
 
 export default function TutorOfferingsPage() {
   const { user } = useAuth();
-  const isTutor = user?.roles?.includes('tutor') || false;
+  const isTutor = isApprovedTutor(user);
   const [subjects, setSubjects] = useState([]);
   const [offerings, setOfferings] = useState([]);
   const [subjectId, setSubjectId] = useState('');

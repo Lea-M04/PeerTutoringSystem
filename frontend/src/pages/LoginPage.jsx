@@ -9,7 +9,7 @@ export default function LoginPage() {
   function update(event) { setValues({ ...values, [event.target.name]: event.target.value }); setError(null); }
   async function submit(event) {
     event.preventDefault(); setBusy(true); setError(null); setSuccess('');
-    try { await login(values); setSuccess('You are signed in. Opening your dashboard…'); navigate(location.state?.from?.pathname || '/dashboard', { replace: true, state: { notice: 'You are signed in.' } }); }
+    try { await login(values); setSuccess('You are signed in. Opening Home…'); navigate('/', { replace: true, state: { notice: 'You are signed in.' } }); }
     catch (caught) { setError(caught); }
     finally { setBusy(false); }
   }

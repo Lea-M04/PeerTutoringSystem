@@ -26,7 +26,10 @@ class TutorDirectoryController extends Controller
     {
         $this->authorizeStudent($request);
 
-        $profile = $this->approvedTutors($request->user())->whereKey($tutorProfile)->firstOrFail();
+        $profile = $this->approvedTutors($request->user())
+            ->with(['reviews.booking.student:id,first_name,last_name'])
+            ->whereKey($tutorProfile)
+            ->firstOrFail();
 
         return TutorDirectoryResource::make($profile)->response();
     }
@@ -40,6 +43,8 @@ class TutorDirectoryController extends Controller
     private function approvedTutors(User $viewer): Builder
     {
         return TutorProfile::query()
+            ->withAvg('reviews', 'rating')
+            ->withCount('reviews')
             ->where('user_id', '<>', $viewer->getKey())
             ->whereHas('user.roles', fn ($query) => $query->where('name', Role::TUTOR))
             ->whereHas('user.tutorApplications', fn ($query) => $query->where('status', TutorApplication::APPROVED))

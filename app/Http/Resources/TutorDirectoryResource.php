@@ -13,6 +13,8 @@ class TutorDirectoryResource extends JsonResource
         return [
             'id' => $this->id,
             'biography' => $this->biography,
+            'average_rating' => $this->reviews_avg_rating === null ? null : round((float) $this->reviews_avg_rating, 2),
+            'review_count' => (int) ($this->reviews_count ?? 0),
             'user' => [
                 'first_name' => $this->user->first_name,
                 'last_name' => $this->user->last_name,
@@ -22,6 +24,7 @@ class TutorDirectoryResource extends JsonResource
                 'year_of_study' => $this->user->year_of_study,
             ],
             'offerings' => TutorSubjectResource::collection($this->whenLoaded('offerings')),
+            'reviews' => ReviewResource::collection($this->whenLoaded('reviews')),
         ];
     }
 }

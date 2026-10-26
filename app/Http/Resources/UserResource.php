@@ -2,6 +2,8 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Role;
+use App\Models\TutorApplication;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -14,6 +16,10 @@ class UserResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $isApprovedTutor = $this->whenLoaded('roles', fn (): bool =>
+            $this->roles->contains('name', Role::TUTOR)
+            && $this->tutorApplications()->where('status', TutorApplication::APPROVED)->exists());
+
         return [
             'id' => $this->id,
             'name' => $this->name,
@@ -25,6 +31,7 @@ class UserResource extends JsonResource
             'year_of_study' => $this->year_of_study,
             'biography' => $this->biography,
             'roles' => $this->whenLoaded('roles', fn () => $this->roles->pluck('name')->values()),
+            'is_approved_tutor' => $isApprovedTutor,
         ];
     }
 }

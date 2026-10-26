@@ -6,6 +6,13 @@ import App from './App.jsx';
 import './styles.css';
 import './profile.css';
 import './discovery.css';
+import './availability.css';
+import './admin-users.css';
+import './booking.css';
+import './reviews.css';
+import './navigation.css';
+import './homepage.css';
+import './notifications.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

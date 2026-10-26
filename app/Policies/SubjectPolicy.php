@@ -22,4 +22,9 @@ class SubjectPolicy
     {
         return $user->hasRole(Role::ADMIN);
     }
+
+    public function delete(User $user, Subject $subject): bool
+    {
+        return $user->hasRole(Role::ADMIN);
+    }
 }

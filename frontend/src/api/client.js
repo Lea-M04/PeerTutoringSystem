@@ -84,17 +84,37 @@ async function download(path) {
 
 export const api = {
   currentUser: () => request('/api/user'),
+  notifications: (page = 1) => request(`/api/notifications?page=${encodeURIComponent(page)}`),
+  unreadNotificationCount: () => request('/api/notifications/unread-count'),
+  markNotificationRead: (id) => request(`/api/notifications/${encodeURIComponent(id)}/read`, { method: 'POST', body: {} }),
+  markAllNotificationsRead: () => request('/api/notifications/read-all', { method: 'POST', body: {} }),
   updateProfile: (values) => request('/api/user', { method: 'PATCH', body: values }),
   tutorProfile: () => request('/api/tutor-profile'),
   updateTutorProfile: (values) => request('/api/tutor-profile', { method: 'PATCH', body: values }),
   requestPasswordReset: (email) => request('/api/password/forgot', { method: 'POST', body: { email } }),
   resetPassword: (values) => request('/api/password/reset', { method: 'POST', body: values }),
   tutorOfferings: () => request('/api/tutor-profile/offerings'),
+  tutorAvailability: () => request('/api/tutor-profile/availability'),
+  createTutorAvailability: (values) => request('/api/tutor-profile/availability', { method: 'POST', body: values }),
+  updateTutorAvailability: (id, values) => request(`/api/tutor-profile/availability/${id}`, { method: 'PUT', body: values }),
+  deleteTutorAvailability: (id) => request(`/api/tutor-profile/availability/${id}`, { method: 'DELETE' }),
+  tutorDirectoryAvailability: (id) => request(`/api/tutors/${encodeURIComponent(id)}/availability`),
   createTutorOffering: (values) => request('/api/tutor-profile/offerings', { method: 'POST', body: values }),
   updateTutorOffering: (id, values) => request(`/api/tutor-profile/offerings/${id}`, { method: 'PATCH', body: values }),
   deleteTutorOffering: (id) => request(`/api/tutor-profile/offerings/${id}`, { method: 'DELETE' }),
   tutorDirectory: () => request('/api/tutors'),
   tutorDirectoryProfile: (id) => request(`/api/tutors/${encodeURIComponent(id)}`),
+  studentBookings: () => request('/api/bookings'),
+  studentBooking: (id) => request(`/api/bookings/${encodeURIComponent(id)}`),
+  submitBookingReview: (id, values) => request(`/api/bookings/${encodeURIComponent(id)}/review`, { method: 'POST', body: values }),
+  createBooking: (availabilityId, tutorSubjectId) => request('/api/bookings', { method: 'POST', body: { availability_id: availabilityId, tutor_subject_id: tutorSubjectId } }),
+  cancelBooking: (id) => request(`/api/bookings/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: {} }),
+  tutorBookings: () => request('/api/tutor-profile/bookings'),
+  tutorBooking: (id) => request(`/api/tutor-profile/bookings/${encodeURIComponent(id)}`),
+  tutorReviews: () => request('/api/tutor-profile/reviews'),
+  acceptBooking: (id) => request(`/api/tutor-profile/bookings/${encodeURIComponent(id)}/accept`, { method: 'POST', body: {} }),
+  rejectBooking: (id) => request(`/api/tutor-profile/bookings/${encodeURIComponent(id)}/reject`, { method: 'POST', body: {} }),
+  completeBooking: (id) => request(`/api/tutor-profile/bookings/${encodeURIComponent(id)}/complete`, { method: 'POST', body: {} }),
   subjects: () => request('/api/subjects'),
   tutorApplications: () => request('/api/tutor-applications'),
   submitTutorApplication: (values) => {
@@ -112,10 +132,33 @@ export const api = {
   approveTutorApplication: (id) => request(`/api/admin/tutor-applications/${id}/approve`, { method: 'POST', body: {} }),
   rejectTutorApplication: (id, reason) => request(`/api/admin/tutor-applications/${id}/reject`, { method: 'POST', body: { reason } }),
   adminSubjects: () => request('/api/admin/subjects'),
+  adminOverview: () => request('/api/admin/overview'),
+  adminTutors: () => request('/api/admin/tutors'),
+  adminTutorOfferings: (filters = {}) => request(`/api/admin/tutor-offerings${queryString(filters)}`),
+  createAdminTutorOffering: (values) => request('/api/admin/tutor-offerings', { method: 'POST', body: values }),
+  updateAdminTutorOffering: (id, values) => request(`/api/admin/tutor-offerings/${encodeURIComponent(id)}`, { method: 'PATCH', body: values }),
+  deleteAdminTutorOffering: (id) => request(`/api/admin/tutor-offerings/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  adminBookings: (filters = {}) => request(`/api/admin/bookings${queryString(filters)}`),
+  adminBooking: (id) => request(`/api/admin/bookings/${encodeURIComponent(id)}`),
+  adminUsers: () => request('/api/admin/users'),
+  adminUser: (id) => request(`/api/admin/users/${encodeURIComponent(id)}`),
+  updateAdminUser: (id, values) => request(`/api/admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: values }),
+  updateAdminUserStatus: (id, isActive) => request(`/api/admin/users/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: { is_active: isActive } }),
   createSubject: (values) => request('/api/admin/subjects', { method: 'POST', body: values }),
   updateSubject: (id, values) => request(`/api/admin/subjects/${id}`, { method: 'PATCH', body: values }),
   updateSubjectStatus: (id, isActive) => request(`/api/admin/subjects/${id}/status`, { method: 'PATCH', body: { is_active: isActive } }),
+  deleteSubject: (id) => request(`/api/admin/subjects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   register: (values) => request('/register', { method: 'POST', body: values }),
   login: (values) => request('/login', { method: 'POST', body: values }),
   logout: () => request('/logout', { method: 'POST' }),
 };
+
+function queryString(filters) {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') params.set(key, value);
+  });
+  const query = params.toString();
+
+  return query ? `?${query}` : '';
+}

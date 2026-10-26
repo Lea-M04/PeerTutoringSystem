@@ -7,7 +7,7 @@ import TutorProfilePage from './TutorProfilePage.jsx';
 vi.mock('../api/client.js', () => ({
   api: { currentUser: vi.fn(), tutorProfile: vi.fn(), tutorOfferings: vi.fn(), updateTutorProfile: vi.fn() },
 }));
-vi.mock('../auth/AuthContext.jsx', () => ({ useAuth: () => ({ user: { roles: ['student', 'tutor'] }, updateProfile: vi.fn() }) }));
+vi.mock('../auth/AuthContext.jsx', () => ({ useAuth: () => ({ user: { roles: ['student', 'tutor'], is_approved_tutor: true }, updateProfile: vi.fn() }) }));
 
 describe('tutor profile presentation', () => {
   beforeEach(() => {

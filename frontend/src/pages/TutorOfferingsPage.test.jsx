@@ -14,7 +14,7 @@ vi.mock('../api/client.js', () => ({
     deleteTutorOffering: vi.fn(),
   },
 }));
-vi.mock('../auth/AuthContext.jsx', () => ({ useAuth: () => ({ user: { roles: ['student', 'tutor'] } }) }));
+vi.mock('../auth/AuthContext.jsx', () => ({ useAuth: () => ({ user: { roles: ['student', 'tutor'], is_approved_tutor: true } }) }));
 
 describe('TutorOfferingsPage', () => {
   beforeEach(() => {

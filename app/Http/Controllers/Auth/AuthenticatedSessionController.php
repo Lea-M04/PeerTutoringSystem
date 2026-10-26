@@ -13,7 +13,7 @@ class AuthenticatedSessionController extends Controller
 {
     public function store(LoginRequest $request)
     {
-        if (! Auth::guard('web')->attempt($request->validated())) {
+        if (! Auth::guard('web')->attempt($request->validated() + ['is_active' => true])) {
             throw ValidationException::withMessages([
                 'email' => [__('auth.failed')],
             ]);

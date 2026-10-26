@@ -4,6 +4,7 @@ namespace Tests\Feature\Api;
 
 use App\Models\Role;
 use App\Models\Subject;
+use App\Models\TutorProfile;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -35,6 +36,7 @@ class SubjectManagementTest extends TestCase
         $this->postJson('/api/admin/subjects', ['name' => 'Physics'])->assertUnauthorized();
         $this->patchJson("/api/admin/subjects/{$subject->id}", ['name' => 'Physics'])->assertUnauthorized();
         $this->patchJson("/api/admin/subjects/{$subject->id}/status", ['is_active' => false])->assertUnauthorized();
+        $this->deleteJson("/api/admin/subjects/{$subject->id}")->assertUnauthorized();
 
         foreach ([Role::STUDENT, Role::TUTOR] as $role) {
             $user = $this->userWithRole($role);
@@ -45,6 +47,7 @@ class SubjectManagementTest extends TestCase
                 'description' => 'Unauthorized update attempt.',
             ])->assertForbidden();
             $this->actingAs($user)->patchJson("/api/admin/subjects/{$subject->id}/status", ['is_active' => false])->assertForbidden();
+            $this->actingAs($user)->deleteJson("/api/admin/subjects/{$subject->id}")->assertForbidden();
         }
     }
 
@@ -138,5 +141,23 @@ class SubjectManagementTest extends TestCase
 
         $this->assertDatabaseHas('subjects', ['id' => $active->id, 'is_active' => false]);
         $this->assertDatabaseHas('subjects', ['id' => $inactive->id, 'is_active' => true]);
+    }
+
+    public function test_admin_can_delete_only_subjects_without_application_offering_or_booking_history(): void
+    {
+        $admin = $this->userWithRole(Role::ADMIN);
+        $unused = Subject::factory()->create(['name' => 'Unused catalogue entry']);
+        $linked = Subject::factory()->create(['name' => 'Historically offered subject']);
+        $profile = TutorProfile::factory()->create();
+        $profile->offerings()->create(['subject_id' => $linked->getKey()]);
+
+        $this->actingAs($admin)->deleteJson("/api/admin/subjects/{$unused->getKey()}")->assertNoContent();
+        $this->assertDatabaseMissing('subjects', ['id' => $unused->getKey()]);
+
+        $this->deleteJson("/api/admin/subjects/{$linked->getKey()}")
+            ->assertConflict()
+            ->assertJsonPath('message', 'This subject is linked to tutor applications, offerings, or booking history. Deactivate it instead to preserve those records.');
+        $this->assertDatabaseHas('subjects', ['id' => $linked->getKey()]);
+        $this->assertDatabaseHas('tutor_subjects', ['subject_id' => $linked->getKey()]);
     }
 }

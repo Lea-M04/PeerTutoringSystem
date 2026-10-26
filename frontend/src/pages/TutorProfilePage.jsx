@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link, Navigate } from 'react-router';
 import { api } from '../api/client.js';
 import { useAuth } from '../auth/AuthContext.jsx';
+import { isApprovedTutor } from '../auth/roles.js';
 import { FormErrors, PageLoader } from '../components/SiteLayout.jsx';
 import UserProfileCard from '../components/UserProfileCard.jsx';
 
 export default function TutorProfilePage() {
   const { user, updateProfile } = useAuth();
-  const isTutor = user?.roles?.includes('tutor') || false;
+  const isTutor = isApprovedTutor(user);
   const [profile, setProfile] = useState(null);
   const [tutorProfile, setTutorProfile] = useState(null);
   const [offerings, setOfferings] = useState([]);

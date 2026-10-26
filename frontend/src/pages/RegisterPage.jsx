@@ -12,7 +12,7 @@ export default function RegisterPage() {
     if (values.password.length < 12) { setError({ message: 'Please check your details.', errors: { password: ['Use at least 12 characters.'] } }); return; }
     if (values.password !== values.password_confirmation) { setError({ message: 'Please check your details.', errors: { password_confirmation: ['The passwords do not match.'] } }); return; }
     setBusy(true);
-    try { await register(values); setSuccess('Your account is ready. Opening your dashboard…'); navigate('/dashboard', { replace: true, state: { notice: 'Your account is ready.' } }); }
+    try { await register(values); setSuccess('Your account is ready. Opening Home…'); navigate('/', { replace: true, state: { notice: 'Your account is ready.' } }); }
     catch (caught) { setError(caught); }
     finally { setBusy(false); }
   }
