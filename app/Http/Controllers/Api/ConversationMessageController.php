@@ -11,15 +11,19 @@ use App\Http\Requests\StoreMessageRequest;
 use App\Http\Resources\MessageResource;
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Models\User;
 use App\Services\ChatImageProcessor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
+use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 use Throwable;
 
 class ConversationMessageController extends Controller
@@ -50,6 +54,10 @@ class ConversationMessageController extends Controller
             return MessageResource::make($existingMessage)
                 ->response()
                 ->setStatusCode(200);
+        }
+
+        if ($request->hasFile('attachment')) {
+            $this->limitImageUploadAttempts($sender);
         }
 
         $preparedImage = $request->hasFile('attachment')
@@ -171,5 +179,30 @@ class ConversationMessageController extends Controller
             ->where('client_message_id', $clientMessageId)
             ->with(['sender:id,name,first_name,last_name', 'attachments'])
             ->first();
+    }
+
+    /**
+     * Reserve before image processing so repeated expensive failures consume the upload budget.
+     * Persisted idempotent retries are resolved before reaching this method.
+     */
+    private function limitImageUploadAttempts(User $sender): void
+    {
+        $key = 'chat-image-uploads:'.$sender->getAuthIdentifier();
+        $maximumAttempts = 30;
+        $attempts = RateLimiter::hit($key, 60);
+
+        if ($attempts === 0) {
+            throw new ServiceUnavailableHttpException(
+                1,
+                'Image upload protection is temporarily unavailable. Please try again.',
+            );
+        }
+
+        if ($attempts > $maximumAttempts) {
+            throw new TooManyRequestsHttpException(
+                max(1, RateLimiter::availableIn($key)),
+                'Too many image uploads. Please wait before trying again.',
+            );
+        }
     }
 }

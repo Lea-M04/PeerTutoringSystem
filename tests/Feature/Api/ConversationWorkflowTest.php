@@ -10,6 +10,7 @@ use App\Models\TutorApplication;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class ConversationWorkflowTest extends TestCase
@@ -241,5 +242,24 @@ class ConversationWorkflowTest extends TestCase
 
         $this->assertDatabaseCount('messages', 1);
         $this->assertSame($created->json('data.id'), $retried->json('data.id'));
+    }
+
+    public function test_student_can_send_many_consecutive_text_messages_without_an_arbitrary_limit(): void
+    {
+        $student = $this->student();
+        $tutor = $this->tutor();
+        $conversation = Conversation::query()->create([
+            'student_id' => $student->getKey(),
+            'tutor_profile_id' => $tutor->tutorProfile->getKey(),
+        ]);
+
+        foreach (range(1, 35) as $number) {
+            $this->actingAs($student)->postJson("/api/conversations/{$conversation->getKey()}/messages", [
+                'client_message_id' => (string) Str::uuid(),
+                'body' => "Academic question {$number}",
+            ])->assertCreated();
+        }
+
+        $this->assertDatabaseCount('messages', 35);
     }
 }

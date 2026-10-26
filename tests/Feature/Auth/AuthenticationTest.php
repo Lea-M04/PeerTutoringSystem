@@ -37,6 +37,31 @@ class AuthenticationTest extends TestCase
         $this->postJson('/logout')->assertUnauthorized();
     }
 
+    public function test_successful_logout_invalidates_the_session_and_regenerates_the_csrf_token(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'logout@example.test',
+            'password' => Hash::make('correct-password'),
+        ]);
+        $this->withSession(['logout_test_marker' => 'present']);
+
+        $this->postJson('/login', [
+            'email' => $user->email,
+            'password' => 'correct-password',
+        ])->assertOk();
+        $this->assertAuthenticatedAs($user, 'web');
+
+        $sessionIdBeforeLogout = session()->getId();
+        $csrfTokenBeforeLogout = session()->token();
+
+        $this->postJson('/logout')->assertNoContent();
+
+        $this->assertGuest('web');
+        $this->assertNotSame($sessionIdBeforeLogout, session()->getId());
+        $this->assertFalse(session()->has('logout_test_marker'));
+        $this->assertNotSame($csrfTokenBeforeLogout, session()->token());
+    }
+
     public function test_existing_accounts_default_to_active(): void
     {
         $user = User::factory()->create();

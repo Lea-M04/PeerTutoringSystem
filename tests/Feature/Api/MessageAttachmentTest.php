@@ -11,7 +11,9 @@ use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class MessageAttachmentTest extends TestCase
@@ -145,6 +147,7 @@ class MessageAttachmentTest extends TestCase
     {
         Storage::fake('private');
         $student = $this->participant(Role::STUDENT);
+        RateLimiter::clear('chat-image-uploads:'.$student->getAuthIdentifier());
         $tutor = $this->participant(Role::TUTOR, true);
         $conversation = Conversation::query()->create([
             'student_id' => $student->getKey(),
@@ -159,6 +162,108 @@ class MessageAttachmentTest extends TestCase
         ])->assertServerError();
 
         $this->assertDatabaseCount('messages', 0);
+        Storage::disk('private')->assertDirectoryEmpty('chat/'.$conversation->getKey());
+        $this->assertSame(1, RateLimiter::attempts('chat-image-uploads:'.$student->getAuthIdentifier()));
+    }
+
+    public function test_image_upload_limit_is_per_user_and_does_not_limit_text_messages(): void
+    {
+        Storage::fake('private');
+        $this->freezeTime();
+        $student = $this->participant(Role::STUDENT);
+        RateLimiter::clear('chat-image-uploads:'.$student->getAuthIdentifier());
+        $tutor = $this->participant(Role::TUTOR, true);
+        $anotherTutor = $this->participant(Role::TUTOR, true);
+        $conversation = Conversation::query()->create([
+            'student_id' => $student->getKey(),
+            'tutor_profile_id' => $tutor->tutorProfile->getKey(),
+        ]);
+        $anotherConversationForSameStudent = Conversation::query()->create([
+            'student_id' => $student->getKey(),
+            'tutor_profile_id' => $anotherTutor->tutorProfile->getKey(),
+        ]);
+
+        $firstClientMessageId = (string) Str::uuid();
+        $firstMessageId = null;
+
+        foreach (range(1, 30) as $number) {
+            $response = $this->actingAs($student)->postJson("/api/conversations/{$conversation->getKey()}/messages", [
+                'client_message_id' => $number === 1 ? $firstClientMessageId : (string) Str::uuid(),
+                'attachment' => UploadedFile::fake()->image("diagram-{$number}.png", 2, 2),
+            ])->assertCreated();
+
+            if ($number === 1) {
+                $firstMessageId = $response->json('data.id');
+            }
+        }
+
+        $this->actingAs($student)->postJson("/api/conversations/{$conversation->getKey()}/messages", [
+            'client_message_id' => $firstClientMessageId,
+            'attachment' => UploadedFile::fake()->image('retried-diagram.png', 2, 2),
+        ])->assertOk()->assertJsonPath('data.id', $firstMessageId);
+
+        $this->actingAs($student)->postJson("/api/conversations/{$conversation->getKey()}/messages", [
+            'client_message_id' => (string) Str::uuid(),
+            'attachment' => UploadedFile::fake()->image('another-diagram.png', 2, 2),
+        ])->assertTooManyRequests()->assertHeader('Retry-After');
+
+        $this->actingAs($student)->postJson("/api/conversations/{$anotherConversationForSameStudent->getKey()}/messages", [
+            'client_message_id' => (string) Str::uuid(),
+            'attachment' => UploadedFile::fake()->image('other-conversation.png', 2, 2),
+        ])->assertTooManyRequests()->assertHeader('Retry-After');
+
+        $this->actingAs($student)->postJson("/api/conversations/{$conversation->getKey()}/messages", [
+            'client_message_id' => (string) Str::uuid(),
+            'body' => 'Text remains available after the image threshold.',
+        ])->assertCreated();
+
+        $anotherStudent = $this->participant(Role::STUDENT);
+        $anotherConversation = Conversation::query()->create([
+            'student_id' => $anotherStudent->getKey(),
+            'tutor_profile_id' => $tutor->tutorProfile->getKey(),
+        ]);
+        $this->actingAs($anotherStudent)->postJson("/api/conversations/{$anotherConversation->getKey()}/messages", [
+            'client_message_id' => (string) Str::uuid(),
+            'attachment' => UploadedFile::fake()->image('other-user.png', 2, 2),
+        ])->assertCreated();
+        $this->assertSame(1, RateLimiter::attempts('chat-image-uploads:'.$anotherStudent->getAuthIdentifier()));
+
+        $this->travel(61)->seconds();
+
+        $this->actingAs($student)->postJson("/api/conversations/{$anotherConversationForSameStudent->getKey()}/messages", [
+            'client_message_id' => (string) Str::uuid(),
+            'attachment' => UploadedFile::fake()->image('after-window.png', 2, 2),
+        ])->assertCreated();
+
+        $this->assertDatabaseCount('messages', 33);
+        $this->assertDatabaseCount('message_attachments', 32);
+        $this->assertSame(1, RateLimiter::attempts('chat-image-uploads:'.$student->getAuthIdentifier()));
+        $this->assertSame(0, RateLimiter::attempts('chat-image-uploads:'.$anotherStudent->getAuthIdentifier()));
+    }
+
+    public function test_unauthenticated_and_inactive_users_cannot_upload_images(): void
+    {
+        Storage::fake('private');
+        $student = $this->participant(Role::STUDENT);
+        $inactiveStudent = $this->participant(Role::STUDENT);
+        RateLimiter::clear('chat-image-uploads:'.$inactiveStudent->getAuthIdentifier());
+        $inactiveStudent->forceFill(['is_active' => false])->save();
+        $tutor = $this->participant(Role::TUTOR, true);
+        $conversation = Conversation::query()->create([
+            'student_id' => $student->getKey(),
+            'tutor_profile_id' => $tutor->tutorProfile->getKey(),
+        ]);
+        $payload = [
+            'client_message_id' => (string) Str::uuid(),
+            'attachment' => UploadedFile::fake()->image('diagram.png', 2, 2),
+        ];
+        $url = "/api/conversations/{$conversation->getKey()}/messages";
+
+        $this->postJson($url, $payload)->assertUnauthorized();
+        $this->actingAs($inactiveStudent)->postJson($url, $payload)->assertForbidden();
+
+        $this->assertDatabaseCount('messages', 0);
+        $this->assertSame(0, RateLimiter::attempts('chat-image-uploads:'.$inactiveStudent->getAuthIdentifier()));
         Storage::disk('private')->assertDirectoryEmpty('chat/'.$conversation->getKey());
     }
 }

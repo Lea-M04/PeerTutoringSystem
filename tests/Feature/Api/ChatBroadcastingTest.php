@@ -10,9 +10,12 @@ use App\Models\Role;
 use App\Models\TutorApplication;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
+use Illuminate\Broadcasting\BroadcastEvent;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class ChatBroadcastingTest extends TestCase
@@ -27,11 +30,14 @@ class ChatBroadcastingTest extends TestCase
 
     public function test_only_the_student_and_approved_tutor_can_authorize_a_conversation_channel(): void
     {
+        $this->useReverbForChannelAuthorization();
+
         $student = $this->student();
         $tutor = $this->tutor();
         $otherStudent = $this->student();
         $admin = User::factory()->create();
         $admin->roles()->attach(Role::query()->where('name', Role::ADMIN)->value('id'));
+        $admin->refresh();
         $conversation = Conversation::query()->create([
             'student_id' => $student->getKey(),
             'tutor_profile_id' => $tutor->tutorProfile->getKey(),
@@ -41,29 +47,32 @@ class ChatBroadcastingTest extends TestCase
             'channel_name' => 'private-conversations.'.$conversation->getKey(),
         ];
 
-        $this->actingAs($student)->postJson('/broadcasting/auth', $payload)->assertOk()->assertJsonStructure(['auth']);
-        $this->actingAs($tutor)->postJson('/broadcasting/auth', $payload)->assertOk()->assertJsonStructure(['auth']);
-        $this->actingAs($otherStudent)->postJson('/broadcasting/auth', $payload)->assertForbidden();
-        $this->actingAs($admin)->postJson('/broadcasting/auth', $payload)->assertForbidden();
+        $this->actingAs($student, 'sanctum')->postJson('/broadcasting/auth', $payload)->assertOk()->assertJsonStructure(['auth']);
+        $this->actingAs($tutor, 'sanctum')->postJson('/broadcasting/auth', $payload)->assertOk()->assertJsonStructure(['auth']);
+        $this->actingAs($otherStudent, 'sanctum')->postJson('/broadcasting/auth', $payload)->assertForbidden();
+        $this->actingAs($admin, 'sanctum')->postJson('/broadcasting/auth', $payload)->assertForbidden();
 
         $tutor->tutorApplications()->where('status', TutorApplication::APPROVED)->update(['status' => TutorApplication::REJECTED]);
-        $this->actingAs($tutor->fresh())->postJson('/broadcasting/auth', $payload)->assertForbidden();
+        $this->actingAs($tutor->fresh(), 'sanctum')->postJson('/broadcasting/auth', $payload)->assertForbidden();
     }
 
     public function test_user_chat_channel_is_self_only_and_excludes_admins(): void
     {
+        $this->useReverbForChannelAuthorization();
+
         $student = $this->student();
         $otherStudent = $this->student();
         $admin = User::factory()->create();
         $admin->roles()->attach(Role::query()->where('name', Role::ADMIN)->value('id'));
+        $admin->refresh();
         $payload = [
             'socket_id' => '123.456',
             'channel_name' => 'private-users.'.$student->getKey().'.chat',
         ];
 
-        $this->actingAs($student)->postJson('/broadcasting/auth', $payload)->assertOk();
-        $this->actingAs($otherStudent)->postJson('/broadcasting/auth', $payload)->assertForbidden();
-        $this->actingAs($admin)->postJson('/broadcasting/auth', $payload)->assertForbidden();
+        $this->actingAs($student, 'sanctum')->postJson('/broadcasting/auth', $payload)->assertOk();
+        $this->actingAs($otherStudent, 'sanctum')->postJson('/broadcasting/auth', $payload)->assertForbidden();
+        $this->actingAs($admin, 'sanctum')->postJson('/broadcasting/auth', $payload)->assertForbidden();
     }
 
     public function test_chat_events_use_private_channels_and_only_safe_broadcast_payloads(): void
@@ -93,12 +102,55 @@ class ChatBroadcastingTest extends TestCase
         $this->assertArrayNotHasKey('storage_path', $messageEvent->broadcastWith()['message']['attachments'][0]);
     }
 
+    public function test_chat_broadcast_events_are_queued_after_a_successful_commit(): void
+    {
+        Queue::fake();
+
+        DB::transaction(function (): void {
+            foreach ($this->chatBroadcastEvents() as $event) {
+                event($event);
+            }
+
+            Queue::assertNothingPushed();
+        });
+
+        Queue::assertPushedTimes(BroadcastEvent::class, 3);
+    }
+
+    public function test_chat_broadcast_events_are_not_queued_when_the_transaction_rolls_back(): void
+    {
+        Queue::fake();
+
+        DB::beginTransaction();
+        try {
+            foreach ($this->chatBroadcastEvents() as $event) {
+                event($event);
+            }
+
+            Queue::assertNothingPushed();
+        } finally {
+            DB::rollBack();
+        }
+
+        Queue::assertNothingPushed();
+    }
+
+    /** @return array<int, MessageCreated|ReadReceiptUpdated|UnreadCountUpdated> */
+    private function chatBroadcastEvents(): array
+    {
+        return [
+            new MessageCreated(9, ['id' => 41]),
+            new ReadReceiptUpdated(9, 8, 41, '2026-10-26T10:02:00.000Z'),
+            new UnreadCountUpdated(7, 9),
+        ];
+    }
+
     private function student(): User
     {
         $user = User::factory()->create();
         $user->roles()->attach(Role::query()->where('name', Role::STUDENT)->value('id'));
 
-        return $user;
+        return $user->fresh();
     }
 
     private function tutor(): User
@@ -113,5 +165,17 @@ class ChatBroadcastingTest extends TestCase
             ->forceFill(['status' => TutorApplication::APPROVED])->save();
 
         return $user->fresh();
+    }
+
+    private function useReverbForChannelAuthorization(): void
+    {
+        config([
+            'broadcasting.default' => 'reverb',
+            'broadcasting.connections.reverb.key' => 'test-key',
+            'broadcasting.connections.reverb.secret' => 'test-secret',
+            'broadcasting.connections.reverb.app_id' => 'test-app',
+        ]);
+
+        require base_path('routes/channels.php');
     }
 }
