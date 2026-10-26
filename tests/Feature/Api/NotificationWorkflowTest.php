@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Mail\BusinessEventMail;
 use App\Models\Booking;
 use App\Models\Role;
 use App\Models\Subject;
@@ -12,6 +13,7 @@ use App\Services\InAppNotificationService;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class NotificationWorkflowTest extends TestCase
@@ -70,6 +72,7 @@ class NotificationWorkflowTest extends TestCase
 
     public function test_booking_request_notifies_only_the_owning_tutor_and_is_idempotent(): void
     {
+        Mail::fake();
         $student = $this->userWithRole(Role::STUDENT);
         $tutor = $this->approvedTutor();
         $availability = $this->availability($tutor);
@@ -86,10 +89,16 @@ class NotificationWorkflowTest extends TestCase
             'booking_id' => $booking->id,
         ]);
         $this->assertDatabaseMissing('in_app_notifications', ['user_id' => $student->id, 'type' => 'booking_requested']);
+        Mail::assertSent(BusinessEventMail::class, fn (BusinessEventMail $mail): bool => $mail->hasTo($tutor->email)
+            && $mail->title === 'New tutoring request'
+            && $mail->details['Student'] === $student->name
+            && $mail->actionUrl === "http://localhost:5173/tutor-bookings/{$booking->id}");
+        Mail::assertSentCount(1);
     }
 
     public function test_tutor_acceptance_and_rejection_notify_the_correct_students(): void
     {
+        Mail::fake();
         $tutor = $this->approvedTutor();
         $firstStudent = $this->userWithRole(Role::STUDENT);
         $secondStudent = $this->userWithRole(Role::STUDENT);
@@ -98,6 +107,7 @@ class NotificationWorkflowTest extends TestCase
 
         $this->actingAs($tutor)->postJson("/api/tutor-profile/bookings/{$acceptedBooking->id}/accept")->assertOk();
         $this->actingAs($tutor)->postJson("/api/tutor-profile/bookings/{$rejectedBooking->id}/reject")->assertOk();
+        $this->actingAs($tutor)->postJson("/api/tutor-profile/bookings/{$acceptedBooking->id}/accept")->assertConflict();
 
         $this->assertDatabaseHas('in_app_notifications', [
             'user_id' => $firstStudent->id,
@@ -110,10 +120,16 @@ class NotificationWorkflowTest extends TestCase
             'type' => 'booking_rejected',
         ]);
         $this->assertDatabaseMissing('in_app_notifications', ['user_id' => $tutor->id, 'type' => 'booking_accepted']);
+        Mail::assertSent(BusinessEventMail::class, fn (BusinessEventMail $mail): bool => $mail->hasTo($firstStudent->email)
+            && $mail->title === 'Booking accepted');
+        Mail::assertSent(BusinessEventMail::class, fn (BusinessEventMail $mail): bool => $mail->hasTo($secondStudent->email)
+            && $mail->title === 'Booking declined');
+        Mail::assertSentCount(4);
     }
 
     public function test_successful_student_cancellation_notifies_only_the_tutor(): void
     {
+        Mail::fake();
         $student = $this->userWithRole(Role::STUDENT);
         $tutor = $this->approvedTutor();
         $booking = $this->requestBooking($student, $this->availability($tutor));
@@ -128,10 +144,14 @@ class NotificationWorkflowTest extends TestCase
             'type' => 'booking_cancelled',
         ]);
         $this->assertDatabaseMissing('in_app_notifications', ['user_id' => $student->id, 'type' => 'booking_cancelled']);
+        Mail::assertSent(BusinessEventMail::class, fn (BusinessEventMail $mail): bool => $mail->hasTo($tutor->email)
+            && $mail->title === 'Booking cancelled');
+        Mail::assertSentCount(2);
     }
 
     public function test_successful_booking_completion_notifies_the_student_that_review_may_be_available(): void
     {
+        Mail::fake();
         $student = $this->userWithRole(Role::STUDENT);
         $tutor = $this->approvedTutor();
         $booking = $this->requestBooking($student, $this->availability($tutor));
@@ -148,10 +168,15 @@ class NotificationWorkflowTest extends TestCase
             'type' => 'booking_completed',
             'message' => 'Your tutoring session is complete. If eligible, you can now leave a review.',
         ]);
+        Mail::assertSent(BusinessEventMail::class, fn (BusinessEventMail $mail): bool => $mail->hasTo($student->email)
+            && $mail->title === 'Session completed'
+            && str_contains($mail->body, 'leave a review'));
+        Mail::assertSentCount(3);
     }
 
     public function test_approval_and_rejection_notify_the_tutor_application_applicant(): void
     {
+        Mail::fake();
         $admin = $this->userWithRole(Role::ADMIN);
         $approvedApplicant = $this->userWithRole(Role::STUDENT);
         $rejectedApplicant = $this->userWithRole(Role::STUDENT);
@@ -174,10 +199,17 @@ class NotificationWorkflowTest extends TestCase
             'type' => 'tutor_application_rejected',
         ]);
         $this->assertDatabaseCount('in_app_notifications', 2);
+        Mail::assertSent(BusinessEventMail::class, fn (BusinessEventMail $mail): bool => $mail->hasTo($approvedApplicant->email)
+            && $mail->title === 'Tutor application approved'
+            && $mail->actionUrl === 'http://localhost:5173/tutor-application');
+        Mail::assertSent(BusinessEventMail::class, fn (BusinessEventMail $mail): bool => $mail->hasTo($rejectedApplicant->email)
+            && $mail->title === 'Tutor application update');
+        Mail::assertSentCount(2);
     }
 
     public function test_failed_operations_do_not_create_notifications(): void
     {
+        Mail::fake();
         $student = $this->userWithRole(Role::STUDENT);
         $tutor = $this->approvedTutor();
         $admin = $this->userWithRole(Role::ADMIN);
@@ -193,10 +225,12 @@ class NotificationWorkflowTest extends TestCase
 
         $this->assertDatabaseCount('bookings', 0);
         $this->assertDatabaseCount('in_app_notifications', 0);
+        Mail::assertNothingSent();
     }
 
     public function test_notification_write_failure_rolls_back_booking_creation(): void
     {
+        Mail::fake();
         $student = $this->userWithRole(Role::STUDENT);
         $tutor = $this->approvedTutor();
         $availability = $this->availability($tutor);
@@ -213,10 +247,12 @@ class NotificationWorkflowTest extends TestCase
 
         $this->assertDatabaseCount('bookings', 0);
         $this->assertDatabaseCount('in_app_notifications', 0);
+        Mail::assertNothingSent();
     }
 
     public function test_notification_write_failure_rolls_back_tutor_application_approval(): void
     {
+        Mail::fake();
         $admin = $this->userWithRole(Role::ADMIN);
         $applicant = $this->userWithRole(Role::STUDENT);
         $application = TutorApplication::factory()->for($applicant, 'applicant')->create();
@@ -232,5 +268,67 @@ class NotificationWorkflowTest extends TestCase
         $this->assertFalse($applicant->fresh()->hasRole(Role::TUTOR));
         $this->assertDatabaseCount('tutor_profiles', 0);
         $this->assertDatabaseCount('in_app_notifications', 0);
+        Mail::assertNothingSent();
+    }
+
+    public function test_rolling_back_after_an_in_app_event_is_recorded_does_not_send_email(): void
+    {
+        Mail::fake();
+        $student = $this->userWithRole(Role::STUDENT);
+        $tutor = $this->approvedTutor();
+        $availability = $this->availability($tutor);
+        $booking = Booking::factory()->for($student, 'student')->forAvailability($availability)->create([
+            'subject_id' => $availability->tutorProfile->offerings()->value('subject_id'),
+        ]);
+
+        try {
+            DB::transaction(function () use ($booking): void {
+                app(InAppNotificationService::class)->bookingRequested($booking);
+
+                throw new \RuntimeException('Force transaction rollback.');
+            });
+        } catch (\RuntimeException) {
+            // The transaction is expected to roll back after scheduling its after-commit callback.
+        }
+
+        $this->assertDatabaseCount('in_app_notifications', 0);
+        Mail::assertNothingSent();
+    }
+
+    public function test_email_template_has_readable_html_and_plain_text_content(): void
+    {
+        $mail = new BusinessEventMail(
+            recipientName: 'Ari Student',
+            title: 'Booking accepted',
+            body: 'Your tutor accepted the request.',
+            details: ['Subject' => 'Biology', 'Session' => 'Wed, Jan 2, 2030'],
+            actionUrl: 'http://localhost:5173/bookings/12',
+            actionLabel: 'View booking',
+        );
+
+        $mail->assertSeeInHtml('Booking accepted');
+        $mail->assertSeeInHtml('Biology');
+        $mail->assertSeeInText('Your tutor accepted the request.');
+        $mail->assertSeeInText('http://localhost:5173/bookings/12');
+    }
+
+    public function test_email_transport_failure_does_not_undo_the_committed_booking_or_in_app_notification(): void
+    {
+        $student = $this->userWithRole(Role::STUDENT);
+        $tutor = $this->approvedTutor();
+        $availability = $this->availability($tutor);
+        Mail::shouldReceive('to')->once()->with($tutor->email)->andThrow(new \RuntimeException('SMTP credentials must not be logged.'));
+
+        $response = $this->actingAs($student)->postJson('/api/bookings', [
+            'availability_id' => $availability->id,
+            'tutor_subject_id' => $availability->tutorProfile->offerings()->value('id'),
+        ])->assertCreated();
+
+        $booking = Booking::query()->findOrFail($response->json('data.id'));
+        $this->assertDatabaseHas('bookings', ['id' => $booking->id, 'status' => Booking::PENDING]);
+        $this->assertDatabaseHas('in_app_notifications', [
+            'user_id' => $tutor->id,
+            'event_key' => "booking:{$booking->id}:requested",
+        ]);
     }
 }
