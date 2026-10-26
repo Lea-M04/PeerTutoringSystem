@@ -56,6 +56,14 @@ class User extends Authenticatable
         return $this->roles()->where('name', $role)->exists();
     }
 
+    public function isApprovedTutor(): bool
+    {
+        return $this->hasRole(Role::TUTOR)
+            && ! $this->hasRole(Role::ADMIN)
+            && $this->tutorProfile()->exists()
+            && $this->tutorApplications()->where('status', TutorApplication::APPROVED)->exists();
+    }
+
     /**
      * Get the attributes that should be cast.
      *

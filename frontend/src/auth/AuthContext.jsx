@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client.js';
+import { disconnectEcho } from '../realtime/echo.js';
 
 const AuthContext = createContext(null);
 
@@ -23,7 +24,7 @@ export function AuthProvider({ children }) {
     async updateProfile(values) { const result = await api.updateProfile(values); setUser(result.data); return result.data; },
     async login(values) { const result = await api.login(values); setUser(result.data); return result.data; },
     async register(values) { const result = await api.register(values); setUser(result.data); return result.data; },
-    async logout() { await api.logout(); setUser(null); },
+    async logout() { await api.logout(); setUser(null); disconnectEcho(); },
   }), [user, loading]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

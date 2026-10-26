@@ -28,6 +28,7 @@ import TutorReviewsPage from './pages/TutorReviewsPage.jsx';
 import AdminTutorOfferingsPage from './pages/AdminTutorOfferingsPage.jsx';
 import AdminBookingsPage from './pages/AdminBookingsPage.jsx';
 import AdminBookingDetailPage from './pages/AdminBookingDetailPage.jsx';
+import ConversationsPage from './pages/ConversationsPage.jsx';
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -48,6 +49,8 @@ export default function App() {
     <Route path="/tutor-bookings" element={<ProtectedRoute><TutorBookingsPage /></ProtectedRoute>} />
     <Route path="/tutor-bookings/:bookingId" element={<ProtectedRoute><TutorBookingDetailPage /></ProtectedRoute>} />
     <Route path="/tutor-reviews" element={<ProtectedRoute><TutorReviewsPage /></ProtectedRoute>} />
+    <Route path="/messages" element={<ProtectedRoute><ConversationsPage /></ProtectedRoute>} />
+    <Route path="/messages/:conversationId" element={<ProtectedRoute><ConversationsPage /></ProtectedRoute>} />
     <Route path="/tutors" element={<ProtectedRoute><TutorDirectoryPage /></ProtectedRoute>} />
     <Route path="/tutors/:tutorProfileId" element={<ProtectedRoute><TutorDirectoryProfilePage /></ProtectedRoute>} />
     <Route path="/tutor-application" element={<ProtectedRoute><TutorApplicationPage /></ProtectedRoute>} />

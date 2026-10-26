@@ -30,7 +30,7 @@ async function request(path, { method = 'GET', body } = {}) {
   if (body !== undefined && !isFormData) headers['Content-Type'] = 'application/json';
 
   if (!['GET', 'HEAD', 'OPTIONS'].includes(upperMethod)) {
-    await csrfCookie();
+    if (!xsrfCookie()) await csrfCookie();
     const token = xsrfCookie();
     if (token) headers['X-XSRF-TOKEN'] = token;
   }
@@ -82,6 +82,30 @@ async function download(path) {
   return response.blob();
 }
 
+async function privateImage(path) {
+  let response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'image/jpeg, image/png, image/webp, application/json' },
+    });
+  } catch {
+    throw new ApiError('Unable to reach the API. Check that the Laravel server is running.');
+  }
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new ApiError(payload.message || 'This image could not be loaded.', {
+      status: response.status,
+      errors: payload.errors || {},
+    });
+  }
+
+  return response.blob();
+}
+
 export const api = {
   currentUser: () => request('/api/user'),
   notifications: (page = 1) => request(`/api/notifications?page=${encodeURIComponent(page)}`),
@@ -115,6 +139,19 @@ export const api = {
   acceptBooking: (id) => request(`/api/tutor-profile/bookings/${encodeURIComponent(id)}/accept`, { method: 'POST', body: {} }),
   rejectBooking: (id) => request(`/api/tutor-profile/bookings/${encodeURIComponent(id)}/reject`, { method: 'POST', body: {} }),
   completeBooking: (id) => request(`/api/tutor-profile/bookings/${encodeURIComponent(id)}/complete`, { method: 'POST', body: {} }),
+  conversations: (page = 1) => request(`/api/conversations?page=${encodeURIComponent(page)}`),
+  unreadMessageCount: () => request('/api/conversations/unread-count'),
+  createConversation: (tutorProfileId) => request('/api/conversations', { method: 'POST', body: { tutor_profile_id: tutorProfileId } }),
+  conversationMessages: (id, cursor = null) => request(`/api/conversations/${encodeURIComponent(id)}/messages${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
+  sendConversationMessage: (id, { clientMessageId, body, attachment }) => {
+    const form = new FormData();
+    form.append('client_message_id', clientMessageId);
+    if (body.trim()) form.append('body', body.trim());
+    if (attachment) form.append('attachment', attachment);
+    return request(`/api/conversations/${encodeURIComponent(id)}/messages`, { method: 'POST', body: form });
+  },
+  markConversationRead: (id, messageId) => request(`/api/conversations/${encodeURIComponent(id)}/read`, { method: 'POST', body: { message_id: messageId } }),
+  privateMessageImage: (url) => privateImage(url),
   subjects: () => request('/api/subjects'),
   tutorApplications: () => request('/api/tutor-applications'),
   submitTutorApplication: (values) => {

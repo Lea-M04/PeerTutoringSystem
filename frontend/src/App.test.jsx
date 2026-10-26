@@ -9,7 +9,7 @@ const auth = vi.hoisted(() => ({ value: { user: null, loading: false, logout: vi
 vi.mock('./auth/AuthContext.jsx', () => ({ useAuth: () => auth.value }));
 vi.mock('./api/client.js', () => ({ api: {
   tutorDirectory: vi.fn(), tutorApplications: vi.fn(), currentUser: vi.fn(), notifications: vi.fn(),
-  unreadNotificationCount: vi.fn(), markNotificationRead: vi.fn(), markAllNotificationsRead: vi.fn(),
+  unreadNotificationCount: vi.fn(), unreadMessageCount: vi.fn(), markNotificationRead: vi.fn(), markAllNotificationsRead: vi.fn(),
 } }));
 
 function renderApp(path = '/') {
@@ -25,6 +25,7 @@ describe('homepage route and profile navigation', () => {
     api.currentUser.mockResolvedValue({ data: { name: 'Alex Student', roles: ['student'] } });
     api.notifications.mockResolvedValue({ data: [], links: { next: null } });
     api.unreadNotificationCount.mockResolvedValue({ data: { unread_count: 0 } });
+    api.unreadMessageCount.mockResolvedValue({ data: { unread_count: 0 } });
   });
 
   it.each([

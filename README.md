@@ -2,9 +2,9 @@
 
 Bachelor thesis project: **Design and Development of a Peer Tutoring Management System for Higher Education Institutions.**
 
-## Current implementation snapshot (2026-10-24)
+## Current implementation snapshot (2026-10-26)
 
-The Laravel backend implements registration/login, role membership, subject catalogue and tutor application/review, user/tutor profile APIs, email-based password reset, tutor subject offerings, and a student-accessible tutor directory API. The separate React + Vite frontend provides profile display/edit screens, password recovery pages, tutor directory/search/detail pages, and tutor offering management in addition to authentication. Availability, bookings, session completion, reviews, chat, notifications, and administration statistics remain planned. Browser registration, session persistence, logout, and dashboard protection were previously manually verified; this increment's authenticated flows have automated tests but have not been fully manually checked in a browser. The latest Laravel suite run completed 55 tests and 308 assertions against isolated SQLite `:memory:`; 16 frontend tests passed. As of 2026-10-24, migration status confirmed all migrations through `create_tutor_subjects_table` have run against the configured PostgreSQL database.
+The Laravel backend implements registration/login, role membership, subject catalogue and tutor application/review, profiles, tutor offerings and discovery, availability and bookings, reviews, notifications, administration, and persistent chat. The React + Vite frontend includes the corresponding student, tutor, and admin workflows. Chat schema migrations remain pending. The project owner reports an earlier backend result of 175 passing tests and 1,025 assertions; the backend suite could not be rerun during the Reverb change because this execution environment reports the PHPUnit bootstrap as unreadable. New broadcasting backend tests are therefore unverified here.
 
 ## Phase 1: backend foundation
 
@@ -101,11 +101,36 @@ In `frontend/`, run `npm test` for the Vitest + Testing Library UI tests, or `np
 
 ## Current scope limits
 
-This phase does not implement bookings, availability, sessions, reviews, chat, notifications, or analytics. Real-time chat and additional application features will be added in later phases.
+The chat foundation supports one persistent conversation per student–approved tutor pair, text messages, private JPEG/PNG/WebP attachments up to 5 MiB, paginated history, read receipts, unread counts, and a responsive interface. Laravel Reverb and Laravel Echo are now wired for private message, read-receipt, and unread-count events; the four-second polling fallback remains until live delivery has been verified in two browser sessions. Typing indicators and online presence are deferred. Any student may start a conversation with an approved tutor without a booking. Conversation access and history remain after booking cancellation, rejection, or completion. Chat migrations remain pending and have not been run.
+
+### Chat foundation setup
+
+Use PHP 8.3 explicitly because the default PowerShell `php` command may resolve to PHP 8.1.10:
+
+```powershell
+& 'C:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe' artisan serve --host=localhost --port=8000
+```
+
+In a second terminal, run the existing frontend dependencies without reinstalling them:
+
+```powershell
+Set-Location frontend
+npm run dev -- --host=localhost --port=5173
+```
+
+### Reverb chat setup
+
+Configure the Reverb values in the ignored backend `.env` and frontend `frontend/.env.local` from their respective `.env.example` files. Generate unique `REVERB_APP_ID`, `REVERB_APP_KEY`, and `REVERB_APP_SECRET` values locally; the secret must remain backend-only. `VITE_REVERB_APP_KEY` is public and must match the backend key. Set the backend `REVERB_ALLOWED_ORIGINS` to the frontend hostnames (without schemes or ports), and keep the frontend host consistent with the backend's stateful Sanctum and CORS configuration. Never copy the Reverb secret into a `VITE_*` variable.
+
+Run four local processes: Laravel (`artisan serve`), Reverb (`artisan reverb:start`), the database queue worker (`artisan queue:work`), and Vite (`npm run dev` from `frontend/`). The queue worker delivers broadcasts after committed database transactions. The REST API remains the source of truth, and four-second polling remains active as a fallback. No database migration is run by these commands; apply the pending chat migrations only through the project's separately approved database workflow.
+
+The chat migration files are pending and were not executed as part of this change. Review the intended database target and migrations separately before applying them. No database migration, seed, reset, or SQL write was run for this foundation. Private chat image files use the existing `private` disk; production storage must remain private and use an authenticated application download route.
+
+Reverb private-channel delivery is implemented in source, but still requires local credential configuration, a running Reverb server and queue worker, backend test verification, and a two-browser delivery check. Broadcast secrets must remain server-side. Reverb/Echo values are intentionally blank in the example environment files; setup is described above.
 
 ## Separate React frontend (Phase 3)
 
-The presentation tier lives in `frontend/` and runs separately from Laravel. The request path is **React + Vite → Laravel REST API → PostgreSQL**; the browser never connects to PostgreSQL. This frontend foundation includes a landing page, registration, login, a protected dashboard placeholder, and a centralized API client. It does not implement tutoring workflows yet.
+The presentation tier lives in `frontend/` and runs separately from Laravel. The request path is **React + Vite → Laravel REST API → PostgreSQL**; the browser never connects to PostgreSQL. The frontend includes authentication, profiles, tutor discovery, bookings, reviews, notifications, administration, and chat, using the shared session-based API client.
 
 ### Run locally
 

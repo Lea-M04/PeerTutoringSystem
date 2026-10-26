@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate, useParams } from 'react-router';
+import { Link, Navigate, useNavigate, useParams } from 'react-router';
 import { api } from '../api/client.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { FormErrors, PageLoader } from '../components/SiteLayout.jsx';
@@ -8,7 +8,11 @@ import { formatLocalDateTime } from '../utils/dateTime.js';
 export default function TutorDirectoryProfilePage() {
   const { tutorProfileId } = useParams();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const isStudent = user?.roles?.includes('student') || false;
+  const canStartConversation = isStudent
+    && !user?.roles?.includes('tutor')
+    && !user?.roles?.includes('admin');
   const [tutor, setTutor] = useState(null);
   const [availability, setAvailability] = useState([]);
   const [error, setError] = useState(null);
@@ -21,6 +25,8 @@ export default function TutorDirectoryProfilePage() {
   const [requestedAvailabilityIds, setRequestedAvailabilityIds] = useState([]);
   const [selectedOfferingId, setSelectedOfferingId] = useState('');
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const [conversationError, setConversationError] = useState(null);
+  const [conversationBusy, setConversationBusy] = useState(false);
 
   useEffect(() => {
     if (!isStudent) return undefined;
@@ -86,6 +92,19 @@ export default function TutorDirectoryProfilePage() {
     }
   }
 
+  async function startConversation() {
+    setConversationBusy(true);
+    setConversationError(null);
+    try {
+      const result = await api.createConversation(tutorProfileId);
+      navigate(`/messages/${result.data.id}`);
+    } catch (caught) {
+      setConversationError(caught);
+    } finally {
+      setConversationBusy(false);
+    }
+  }
+
   return <section className="directory-page section-wrap">
     <Link className="text-link back-link" to="/tutors"><span aria-hidden="true">←</span> Back to tutors</Link>
     {error ? <div className="directory-empty">{error.status === 404
@@ -93,6 +112,7 @@ export default function TutorDirectoryProfilePage() {
       : <FormErrors error={error} />}<Link className="button button-outline" to="/tutors">Return to tutor directory</Link></div> : tutor && <>
       <span className="eyebrow">APPROVED PEER TUTOR</span><h1>{fullName} <em>profile.</em></h1>
       <p className="rating-summary" aria-label={tutor.review_count ? `Average rating ${tutor.average_rating} out of 5 from ${tutor.review_count} reviews` : 'No reviews yet'}>{tutor.review_count ? `★ ${Number(tutor.average_rating).toFixed(1)} · ${tutor.review_count} ${tutor.review_count === 1 ? 'review' : 'reviews'}` : 'No reviews yet'}</p>
+      {canStartConversation && <div className="directory-message-action"><FormErrors error={conversationError} /><button type="button" className="button" disabled={conversationBusy} onClick={() => void startConversation()}>{conversationBusy ? 'Opening conversation…' : 'Message this tutor'}</button></div>}
       <section className="tutor-profile-overview"><div><span className="card-label">UNIVERSITY OR FACULTY</span><p>{tutor.user?.faculty_or_university || 'Not provided'}</p></div><div><span className="card-label">STUDY PROGRAM</span><p>{tutor.user?.study_program || 'Not provided'}</p></div><div><span className="card-label">YEAR OF STUDY</span><p>{tutor.user?.year_of_study ?? 'Not provided'}</p></div></section>
       <section className="profile-panel directory-profile-section"><h2>About this tutor</h2><p className="profile-biography">{tutor.biography || 'This tutor has not added a biography yet.'}</p></section>
       <section className="directory-profile-section"><span className="eyebrow">CURRENTLY AVAILABLE SUBJECTS</span><h2>Teaching subjects</h2><div className="directory-offerings">{tutor.offerings.map((offering) => <article className="directory-offering-card" key={offering.id}><h3>{offering.subject.name}</h3><p>{offering.description || 'Teaching focus not provided.'}</p></article>)}</div></section>

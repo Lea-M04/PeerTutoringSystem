@@ -27,6 +27,21 @@ describe('booking API client contract', () => {
     expect(requestOptions.headers['X-XSRF-TOKEN']).toBe('booking-test-token');
   });
 
+  it('reuses an existing Sanctum CSRF cookie instead of fetching it before every write', async () => {
+    document.cookie = 'XSRF-TOKEN=existing-test-token; path=/';
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({ data: { id: 56 } }),
+    });
+
+    await api.createBooking(90, 10);
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/api\/bookings$/);
+    expect(fetchMock.mock.calls[0][1].headers['X-XSRF-TOKEN']).toBe('existing-test-token');
+  });
+
   it('posts only rating and optional comment for a booking review with Sanctum credentials', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
       if (String(url).endsWith('/sanctum/csrf-cookie')) {

@@ -9,6 +9,9 @@ use App\Http\Controllers\Api\Admin\UserManagementController;
 use App\Http\Controllers\Api\AuthenticatedUserController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\BookingReviewController;
+use App\Http\Controllers\Api\ConversationController;
+use App\Http\Controllers\Api\ConversationMessageController;
+use App\Http\Controllers\Api\MessageAttachmentController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\TutorApplicationController;
 use App\Http\Controllers\Api\TutorAvailabilityController;
@@ -18,6 +21,7 @@ use App\Http\Controllers\Api\TutorReviewController;
 use App\Http\Controllers\Api\TutorSubjectController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Models\Booking;
+use App\Models\Conversation;
 use App\Models\Review;
 use App\Models\Subject;
 use App\Models\TutorApplication;
@@ -35,6 +39,30 @@ Route::post('/password/reset', [PasswordResetController::class, 'reset'])
     ->name('api.password.reset');
 
 Route::middleware(['auth:sanctum', 'active.account'])->group(function (): void {
+    Route::get('/conversations/unread-count', [ConversationController::class, 'unreadCount'])
+        ->can('viewAny', Conversation::class)
+        ->name('api.conversations.unread-count');
+    Route::get('/conversations', [ConversationController::class, 'index'])
+        ->can('viewAny', Conversation::class)
+        ->name('api.conversations.index');
+    Route::post('/conversations', [ConversationController::class, 'store'])
+        ->name('api.conversations.store');
+    Route::get('/conversations/{conversation}/messages', [ConversationMessageController::class, 'index'])
+        ->can('view', 'conversation')
+        ->whereNumber('conversation')
+        ->name('api.conversations.messages.index');
+    Route::post('/conversations/{conversation}/messages', [ConversationMessageController::class, 'store'])
+        ->can('sendMessage', 'conversation')
+        ->whereNumber('conversation')
+        ->name('api.conversations.messages.store');
+    Route::post('/conversations/{conversation}/read', [ConversationMessageController::class, 'markRead'])
+        ->can('markRead', 'conversation')
+        ->whereNumber('conversation')
+        ->name('api.conversations.read');
+    Route::get('/message-attachments/{attachment}', [MessageAttachmentController::class, 'show'])
+        ->whereNumber('attachment')
+        ->name('api.message-attachments.show');
+
     Route::get('/notifications', [NotificationController::class, 'index'])->name('api.notifications.index');
     Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount'])->name('api.notifications.unread-count');
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead'])->name('api.notifications.read-all');

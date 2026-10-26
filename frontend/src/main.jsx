@@ -13,6 +13,7 @@ import './reviews.css';
 import './navigation.css';
 import './homepage.css';
 import './notifications.css';
+import './chat.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

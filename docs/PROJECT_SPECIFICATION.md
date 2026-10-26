@@ -47,8 +47,8 @@ The PTMS is intended to centralize those workflows. The repository does not cont
 - No institution-specific identity provider, student information system, or email service is selected.
 - Exact student/tutor profile fields, tutor discovery filters, administrative powers, statistics, notification events, and retention rules remain to be specified.
 - Booking state names and transition details, slot overlap rules, time zone handling, and the exact interpretation of the 12-hour cancellation rule require confirmation during detailed design. The rule itself is agreed: a student must cancel at least 12 hours before the scheduled session.
-- Chat eligibility is intended to be limited to an eligible student–tutor pair; whether eligibility begins after a booking request, confirmation, or another event remains unresolved.
-- The chosen WebSocket/broadcasting package and production hosting arrangement are unresolved.
+- Any Student may initiate a persistent conversation with an approved Tutor without a booking. There is one conversation per student–tutor pair. Booking cancellation does not remove chat history or by itself revoke chat access.
+- The WebSocket/broadcasting package and production hosting arrangement remain to be selected and configured.
 
 ## 4. System actors and permissions
 
@@ -82,7 +82,7 @@ The requirements below are intended system behavior. **Current** status is asses
 | **FR-11** | A Student shall be able to cancel their booking only at least 12 hours before the scheduled start. A Tutor shall be able to cancel a booking and provide a reason. Exact status names and behavior at the 12-hour boundary require detailed acceptance criteria. |
 | **FR-12** | The system shall track tutoring sessions and allow the Tutor to mark a session completed. Students shall not mark sessions complete on behalf of tutors. Exception handling for disputes or missed sessions remains unresolved. |
 | **FR-13** | After a completed session, a Student shall be able to submit a review with a rating from 1 to 5. Review text, editability, and duplicate-review handling remain unresolved. |
-| **FR-14** | The system shall provide persistent private one-to-one text chat between eligible Students and Tutors. Chat access shall be authorized server-side, and messages shall persist. Attachments, group chat, deletion/editing, and retention are not included in the current requirement. |
+| **FR-14** | A Student may initiate one persistent private conversation with an approved Tutor without a booking. Participants may exchange persisted text and JPEG, PNG, or WebP image messages with optional captions. Each image is limited to 5 MiB and retrieved through an authorized private endpoint. Received messages support read receipts. Booking status alone does not grant or revoke access. Group chat and message editing/deletion are excluded; retention rules remain open. |
 | **FR-15** | The system shall provide in-app notifications for relevant actions. Email notifications may be added as an optional delivery channel. Exact notification events, preferences, and email provider are unresolved. |
 | **FR-16** | The system shall provide administrative management and basic dashboard statistics. The managed entities, metrics, and reporting permissions require approval. |
 | **FR-17** | The system shall expose the frontend's required operations through the Laravel REST API, with consistent validation errors and server-side authorization. |
@@ -147,13 +147,13 @@ The requirements below are intended system behavior. **Current** status is asses
 - **Alternative flows:** Unauthorized user attempts completion/review; session is not eligible; rating is outside the range; review duplicate or dispute behavior is handled under rules still to be defined.
 - **Postconditions:** Completion and eligible feedback are preserved.
 
-### UC-06 — Exchange private messages (planned)
+### UC-06 — Exchange private messages (foundation implemented; real-time delivery planned)
 
 - **Primary actors:** Eligible Student and Tutor.
 - **Preconditions:** Both users are authenticated and authorized for the private conversation.
-- **Main flow:** Client sends text through the Laravel-managed real-time channel/API; the backend authorizes participants, persists the message, and delivers it to the other participant.
-- **Alternative flows:** Non-participant is denied; connection failure does not silently claim an unpersisted message was delivered.
-- **Postconditions:** Authorized participants can retrieve persistent message history. The exact event that establishes eligibility is unresolved.
+- **Main flow:** Any authenticated Student starts or reopens the single conversation with an approved Tutor. Either participant sends text or a supported private image through the authenticated Laravel API. Persisted history is available after refresh; unread messages can be marked read.
+- **Alternative flows:** Nonparticipants and administrators are denied; invalid images or failed requests show an error. Booking cancellation, rejection, or completion does not remove conversation history or revoke access by itself.
+- **Postconditions:** The two participants can retrieve persistent history and authorized image attachments. WebSocket delivery, typing indicators, and presence remain future work.
 
 ## 8. System architecture
 
@@ -221,7 +221,7 @@ These are design recommendations only; no corresponding migrations or models exi
 - **Bookings:** belong to one student, one tutor, one subject, and the selected availability/time. Store the booking state and actor-specific decision/cancellation data needed to preserve request, acceptance/rejection, and cancellation history. Add database-backed protections against overlapping confirmed bookings; the exact strategy depends on whether availability is represented as fixed slot rows or arbitrary intervals.
 - **Tutoring sessions:** recommended as a one-to-one record created from an accepted booking if session execution/completion metadata differs from booking decisions. Alternatively a single booking lifecycle record may suffice; decide before implementation to avoid duplicating status or schedule data.
 - **Reviews:** belong to a completed session and its student reviewer/tutor recipient. Use a rating constraint of 1–5 and a unique session/reviewer constraint if one review per student per session is approved. The backend must enforce completion eligibility and prevent reviews of another user's session.
-- **Conversations and messages:** a conversation represents one eligible student–tutor pair (optionally linked to a qualifying booking/session); messages belong to a conversation and sender. Persist text and timestamps, constrain senders to participants in application authorization, and keep access private. The eligibility event and duplicate-conversation policy remain unresolved.
+- **Conversations and messages (implemented source; migrations pending):** one conversation belongs to a Student and an approved Tutor profile, with a unique student/tutor pair and no booking foreign key. Messages belong to the conversation and authenticated sender, use a per-sender idempotency UUID, and have a nullable `read_at` suitable for one-to-one receipts. Image metadata is stored separately from image bytes, which use private storage. Booking status does not control access.
 - **Notifications:** Laravel's notification persistence can associate each item with its recipient user and store type/data/read timestamp. Define events, retention and whether email is enabled before adding delivery behavior. Admin statistics should be derived from domain records unless a demonstrated performance need justifies stored aggregates.
 
 Proposed relationship sketch:
@@ -235,7 +235,7 @@ Conversation 1---* Message; Message *---1 User(sender)
 User 1---* Notification
 ```
 
-These relationships do not settle booking/session status names, slot recurrence, interval conflict handling, review text/visibility, chat eligibility, or notification lifecycle.
+These relationships do not settle booking/session status names, slot recurrence, interval conflict handling, review text/visibility, message retention, or notification lifecycle.
 
 ## 11. API and authentication approach
 
@@ -304,7 +304,8 @@ Recommended iteration cycle:
 | **3 — Profiles, subjects and tutor catalogue** | **User and tutor profile foundations implemented:** profile fields/endpoints, tutor-only profile endpoint, React profile forms. Continue with subject browsing, tutor subject offerings and search after the new PostgreSQL migrations are reviewed and applied. | Profile behavior passes isolated tests; approved tutors manage only their own tutor profile. Discovery scope and profile API behavior are verified. |
 | **4 — Availability and booking** | Model 30/60/90-minute slots; define time zone, recurrence and conflict rules; request/confirm/reject/cancel flows and 12-hour student cancellation boundary. | Tested transitions prevent double booking and enforce actor-specific cancellation behavior, including boundary cases. |
 | **5 — Session completion and reviews** | Tutor-controlled completion, eligible Student rating (1–5), review visibility and duplicate/edit policy. | Tests enforce completion and review eligibility and preserve session history. |
-| **6 — Private chat and notifications** | Select Laravel-compatible WebSocket broadcaster; define conversation eligibility; authorize channels; persist text messages; implement in-app notifications and optional email. | Tests prove isolation, persistence, authorized delivery, and notification behavior. |
+| **6 — Private chat foundation** | **Source foundation implemented:** unique student/tutor conversations, text/image messages, read state, authenticated private downloads, and React chat UI. Migration files are pending and have not been executed. | Apply migrations only after separate database review/approval; execute isolated backend/frontend tests; verify private access and upload limits. |
+| **6b — Real-time chat and notifications** | Select/configure compatible Laravel broadcaster; authorize private channels; add after-commit message events, typing indicators, presence, and in-app notifications/optional email. | Two authenticated sessions demonstrate authorized delivery, reconnect/history recovery, read events, and no unauthorized channel delivery. |
 | **7 — Administration, statistics, security and thesis evaluation** | Finalize user/subject administration and metrics, hardening, accessibility, performance/backup/retention targets, end-to-end evaluation and documentation. | Approved admin scope, acceptance tests, documented results and limitations suitable for thesis evaluation. |
 
 ## 15. Current implementation status
@@ -333,7 +334,8 @@ Status below is based on inspected files and tests. “Implemented” means repo
 - **Profiles:** New user/tutor profile code and feature tests are implemented. The migration changes were verified by PHPUnit on SQLite `:memory:`; the two new migrations still need review and application to the intended PostgreSQL database. Browser profile forms were not manually tested against the live API in this phase.
 - **Tutor application review:** Core workflow is implemented, but conditional database constraints for all review metadata are absent; API logic enforces the expected flow. Review authorization of an Admin who is also the applicant is denied by current policy, which is stricter than the minimum Student-only restriction.
 - **PostgreSQL setup:** Migrations are written for PostgreSQL as well as SQLite for tests, and `.env.example` currently defaults to PostgreSQL. The project owner reports that existing migrations were run successfully before Phase 5; this audit did not inspect the real `.env`, connect to PostgreSQL, or verify the database migration state. The two new Phase 5 migrations remain pending. Composer's `setup` script includes `artisan migrate --force`, so do not run that script until the database target and migration plan have been reviewed.
-- **Frontend/API integration:** The client uses existing routes and cookie/CSRF mechanics by inspection, and the frontend exists separately. No browser route rendering, cookie login, CORS, or CSRF round trip was verified in this audit. The frontend has no automated test or lint script.
+- **Frontend/API integration:** React UI tests cover chat components, but no live browser/API route rendering, cookie login, CORS, or CSRF round trip has been verified. No frontend lint script is configured.
+- **Private chat:** Source code includes one conversation per student–approved tutor pair, text/image messages, paginated history, read receipts, authorized private image retrieval, aggregate and per-conversation unread counts, and a responsive React page. Laravel Reverb and Laravel Echo are wired for private message, read-receipt, and unread-count events; four-second polling remains as a fallback. Live delivery has not yet been verified in two browsers. Chat migrations remain pending and have not been run. Typing indicators and presence are deferred.
 - **Laravel scaffold:** Blade welcome view and root Laravel Vite/Tailwind configuration remain. They are separate from the React frontend and are not known to conflict with its own Vite server; the Laravel `/` route still renders Blade.
 
 ### Not yet implemented
@@ -344,7 +346,7 @@ Status below is based on inspected files and tests. “Implemented” means repo
 - Booking, confirmation/rejection, cancellation, 12-hour rule, and conflict prevention.
 - Session lifecycle and tutor-controlled completion.
 - Rating/review endpoints and pages.
-- Persistent private chat and WebSocket delivery.
+- Realtime delivery, notifications, and analytics.
 - In-app notifications and optional email delivery.
 - Administrative user/subject management and dashboard statistics.
 - End-to-end frontend/API tests and a production-ready deployment configuration.
@@ -361,7 +363,7 @@ At the start of the Phase 5 implementation, the current branch was `main` at com
 - **Feature/API tests:** Exercise HTTP requests, validation, authentication, authorization, response shape/status, role changes, and failure handling.
 - **Database tests:** Run against an explicitly isolated testing database. The current PHPUnit configuration forces SQLite `:memory:`; never let tests inherit the local PostgreSQL `.env` settings.
 - **Frontend integration tests (future):** Verify React session state, CSRF cookie exchange, credentialed CORS, role-specific access, and error handling against a test backend.
-- **Real-time tests (future):** Verify authorized channel subscriptions, message persistence, recipient isolation, and delivery behavior with a fake/test broadcaster where practical.
+- **Real-time tests:** `tests/Feature/Api/ChatBroadcastingTest.php` covers private-channel authorization and broadcast payload safety. PHPUnit could not reach bootstrap in the current execution environment (`vendor/autoload.php` is readable through `fopen()`/`require`, but PHP `is_readable()` reports false); these backend tests remain unexecuted. A two-browser Reverb delivery check is still required.
 - **Manual acceptance checks:** Demonstrate complete student, tutor, and admin journeys and boundary times with seeded test data only. Do not use or reset production/personal data.
 
 ### Acceptance criteria for the current foundation
@@ -389,9 +391,9 @@ The following are intentionally left open rather than guessed:
 4. Complete booking/session status names and transitions; exact handling at precisely 12 hours before a session.
 5. Whether a booking and session are one record or separate records; no-show/dispute flow.
 6. Review text, visibility, edits, and duplicate-review rules.
-7. When a student/tutor pair becomes eligible for chat; message moderation, retention, and deletion rules.
+7. Message moderation and retention rules; chat eligibility is resolved as any Student with an approved Tutor, independent of bookings.
 8. Exact in-app/email notification events, user preferences, and delivery provider.
 9. Admin management boundaries and dashboard metrics.
-10. Laravel-compatible WebSocket/broadcast package, production domains, deployment, backups, and measurable availability/performance/accessibility targets.
+10. Laravel-compatible WebSocket/broadcast package and production domains; deployment, backups, and measurable availability/performance/accessibility targets.
 
 Until these are decided, implementation should follow only the requirements already stated here and avoid encoding assumed behavior into migrations or public API contracts.

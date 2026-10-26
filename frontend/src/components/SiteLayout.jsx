@@ -1,8 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { isAdminUser, isApprovedTutor, isStudentUser } from '../auth/roles.js';
+import { api } from '../api/client.js';
 import NotificationBell from './NotificationBell.jsx';
+import { getEcho } from '../realtime/echo.js';
+
+const ChatUnreadCountContext = createContext({
+  unreadMessageCount: 0,
+  refreshUnreadMessageCount: () => Promise.resolve(0),
+});
+
+export function useChatUnreadCount() {
+  return useContext(ChatUnreadCountContext);
+}
 
 function Mark() {
   return <Link className="brand" to="/" aria-label="Peerwise home"><span className="brand-mark">P</span><span>peerwise<span className="brand-dot">.</span></span></Link>;
@@ -14,8 +25,76 @@ export function SiteLayout({ children }) {
   const isTutor = isApprovedTutor(user);
   const isAdmin = isAdminUser(user);
   const navigate = useNavigate();
+  const location = useLocation();
   const [logoutError, setLogoutError] = useState('');
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const menuRefs = useRef([]);
+  const unreadRequest = useRef(null);
+  const currentUserId = useRef(user?.id);
+  currentUserId.current = user?.id;
+
+  const refreshUnreadMessageCount = useCallback(() => {
+    const userId = user?.id;
+    if (!userId || (!isStudent && !isTutor)) {
+      setUnreadMessageCount(0);
+      return Promise.resolve(0);
+    }
+
+    if (unreadRequest.current?.userId === userId) return unreadRequest.current.promise;
+
+    const promise = api.unreadMessageCount()
+      .then((result) => {
+        const count = Number(result.data?.unread_count) || 0;
+        if (String(currentUserId.current) === String(userId)) setUnreadMessageCount(count);
+        return count;
+      })
+      .catch(() => null)
+      .finally(() => {
+        if (unreadRequest.current?.promise === promise) unreadRequest.current = null;
+      });
+    unreadRequest.current = { userId, promise };
+
+    return promise;
+  }, [user?.id, isStudent, isTutor]);
+
+  useEffect(() => {
+    const userId = user?.id;
+    if (!userId || (!isStudent && !isTutor)) {
+      setUnreadMessageCount(0);
+      return undefined;
+    }
+
+    void refreshUnreadMessageCount();
+    const isMessagesPage = location.pathname === '/messages' || location.pathname.startsWith('/messages/');
+    const interval = isMessagesPage ? null : window.setInterval(() => {
+      if (!document.hidden) void refreshUnreadMessageCount();
+    }, 5000);
+    const refreshWhenVisible = () => {
+      if (!document.hidden) void refreshUnreadMessageCount();
+    };
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      if (interval !== null) window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [user?.id, isStudent, isTutor, location.pathname, refreshUnreadMessageCount]);
+
+  useEffect(() => {
+    if (!user?.id || (!isStudent && !isTutor)) return undefined;
+
+    const echo = getEcho();
+    if (!echo) return undefined;
+    const channelName = `users.${user.id}.chat`;
+    echo.private(channelName).listen('.chat.unread-count.updated', (event) => {
+      void refreshUnreadMessageCount();
+      window.dispatchEvent(new CustomEvent('chat:unread-count-updated', { detail: event }));
+    });
+
+    return () => echo.leave(channelName);
+  }, [user?.id, isStudent, isTutor, refreshUnreadMessageCount]);
+
+  const chatUnreadContext = useMemo(() => ({ unreadMessageCount, refreshUnreadMessageCount }), [unreadMessageCount, refreshUnreadMessageCount]);
 
   useEffect(() => {
     function closeMenus(event) {
@@ -45,7 +124,7 @@ export function SiteLayout({ children }) {
 
   const initials = (user?.first_name?.[0] || user?.name?.[0] || 'P').toUpperCase();
 
-  return <div className="site-shell">
+  return <ChatUnreadCountContext.Provider value={chatUnreadContext}><div className="site-shell">
     <header className="site-header"><div className="nav-wrap"><Mark />
       <nav aria-label="Main navigation" className="main-nav">
         <NavLink to="/" end>Home</NavLink>
@@ -68,6 +147,9 @@ export function SiteLayout({ children }) {
               <NavLink to="/tutor-profile" onClick={closeMenuAfterNavigation}>Tutor Profile</NavLink>
             </div>
           </details>}
+          {(isStudent || isTutor) && <NavLink className="messages-nav-link" to="/messages" aria-label={`Messages${unreadMessageCount > 0 ? `, ${unreadMessageCount} unread messages` : ''}`}>
+            Messages{unreadMessageCount > 0 && <span className="notification-count" aria-hidden="true">{unreadMessageCount > 99 ? '99+' : unreadMessageCount}</span>}
+          </NavLink>}
           {isAdmin && <details className="nav-dropdown" ref={(element) => { menuRefs.current[2] = element; }}>
             <summary aria-label="Admin menu">Admin <span aria-hidden="true">▾</span></summary>
             <div className="nav-dropdown-menu nav-dropdown-menu-admin" aria-label="Admin navigation">
@@ -91,7 +173,7 @@ export function SiteLayout({ children }) {
     </div></header>
     <main>{logoutError && <div className="section-wrap"><p className="error-box" role="alert">{logoutError}</p></div>}{children}</main>
     <footer className="site-footer"><div className="footer-inner"><Mark /><p>Good learning happens together.</p><span>Peer Tutoring Management System</span></div></footer>
-  </div>;
+  </div></ChatUnreadCountContext.Provider>;
 }
 
 export function PageLoader({ label = 'Loading your account…' }) {

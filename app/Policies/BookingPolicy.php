@@ -4,7 +4,6 @@ namespace App\Policies;
 
 use App\Models\Booking;
 use App\Models\Role;
-use App\Models\TutorApplication;
 use App\Models\User;
 
 class BookingPolicy
@@ -77,9 +76,6 @@ class BookingPolicy
 
     private function isApprovedTutor(User $user): bool
     {
-        return $user->hasRole(Role::TUTOR)
-            && ! $user->hasRole(Role::ADMIN)
-            && $user->tutorProfile()->exists()
-            && $user->tutorApplications()->where('status', TutorApplication::APPROVED)->exists();
+        return $user->isApprovedTutor();
     }
 }
