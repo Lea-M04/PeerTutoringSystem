@@ -37,7 +37,6 @@ class ConversationPolicy
     private function isStudent(User $user): bool
     {
         return $user->hasRole(Role::STUDENT)
-            && ! $user->hasRole(Role::TUTOR)
             && ! $user->hasRole(Role::ADMIN);
     }
 }

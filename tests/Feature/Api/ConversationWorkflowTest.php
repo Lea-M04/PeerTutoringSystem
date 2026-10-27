@@ -52,6 +52,10 @@ class ConversationWorkflowTest extends TestCase
         $student = $this->student();
         $tutor = $this->tutor();
 
+        $this->postJson('/api/conversations', [
+            'tutor_profile_id' => $tutor->tutorProfile->getKey(),
+        ])->assertUnauthorized();
+
         $created = $this->actingAs($student)->postJson('/api/conversations', [
             'tutor_profile_id' => $tutor->tutorProfile->getKey(),
         ])->assertCreated();
@@ -66,7 +70,7 @@ class ConversationWorkflowTest extends TestCase
         ]);
     }
 
-    public function test_unapproved_tutor_and_tutor_initiator_are_forbidden(): void
+    public function test_unapproved_tutor_cannot_be_contacted_but_approved_tutor_can_start_a_conversation(): void
     {
         $student = $this->student();
         $unapprovedTutor = $this->tutor(false);
@@ -76,10 +80,14 @@ class ConversationWorkflowTest extends TestCase
         $this->actingAs($student)->postJson('/api/conversations', [
             'tutor_profile_id' => $unapprovedTutor->tutorProfile->getKey(),
         ])->assertForbidden();
+        $created = $this->actingAs($approvedTutor)->postJson('/api/conversations', [
+            'tutor_profile_id' => $anotherApprovedTutor->tutorProfile->getKey(),
+        ])->assertCreated();
         $this->actingAs($approvedTutor)->postJson('/api/conversations', [
             'tutor_profile_id' => $anotherApprovedTutor->tutorProfile->getKey(),
-        ])->assertForbidden();
-        $this->assertDatabaseCount('conversations', 0);
+        ])->assertOk()->assertJsonPath('data.id', $created->json('data.id'));
+        $this->assertDatabaseCount('conversations', 1);
+        $this->assertDatabaseCount('bookings', 0);
     }
 
     public function test_users_can_only_list_and_read_their_own_pair_conversations(): void
@@ -91,9 +99,15 @@ class ConversationWorkflowTest extends TestCase
             'student_id' => $student->getKey(),
             'tutor_profile_id' => $tutor->tutorProfile->getKey(),
         ]);
+        $anotherTutor = $this->tutor();
+        $startedByTutor = $this->actingAs($tutor)->postJson('/api/conversations', [
+            'tutor_profile_id' => $anotherTutor->tutorProfile->getKey(),
+        ])->assertCreated();
 
         $this->actingAs($student)->getJson('/api/conversations')->assertOk()->assertJsonCount(1, 'data');
+        $this->actingAs($tutor)->getJson('/api/conversations')->assertOk()->assertJsonCount(2, 'data');
         $this->actingAs($tutor)->getJson("/api/conversations/{$conversation->getKey()}/messages")->assertOk();
+        $this->actingAs($tutor)->getJson("/api/conversations/{$startedByTutor->json('data.id')}/messages")->assertOk();
         $this->actingAs($otherStudent)->getJson('/api/conversations')->assertOk()->assertJsonCount(0, 'data');
         $this->actingAs($otherStudent)->getJson("/api/conversations/{$conversation->getKey()}/messages")->assertForbidden();
         $this->actingAs($otherStudent)->postJson("/api/conversations/{$conversation->getKey()}/messages", [
@@ -181,6 +195,26 @@ class ConversationWorkflowTest extends TestCase
         $admin = User::factory()->create();
         $admin->roles()->attach(Role::query()->where('name', Role::ADMIN)->value('id'));
         $this->actingAs($admin)->getJson('/api/conversations/unread-count')->assertForbidden();
+    }
+
+    public function test_approved_tutor_unread_count_includes_conversations_started_as_a_student(): void
+    {
+        $tutorStudent = $this->tutor();
+        $otherTutor = $this->tutor();
+        $conversation = Conversation::query()->create([
+            'student_id' => $tutorStudent->getKey(),
+            'tutor_profile_id' => $otherTutor->tutorProfile->getKey(),
+        ]);
+        Message::query()->create([
+            'conversation_id' => $conversation->getKey(),
+            'sender_id' => $otherTutor->getKey(),
+            'client_message_id' => 'f0ca3ad5-b17e-464e-9308-74918f845d51',
+            'body' => 'Unread from the other tutor',
+        ]);
+
+        $this->actingAs($tutorStudent)->getJson('/api/conversations/unread-count')
+            ->assertOk()
+            ->assertExactJson(['data' => ['unread_count' => 1]]);
     }
 
     public function test_booking_rejection_cancellation_and_completion_do_not_revoke_chat_access(): void

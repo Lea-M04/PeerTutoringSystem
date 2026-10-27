@@ -42,6 +42,11 @@ class ChatBroadcastingTest extends TestCase
             'student_id' => $student->getKey(),
             'tutor_profile_id' => $tutor->tutorProfile->getKey(),
         ]);
+        $anotherTutor = $this->tutor();
+        $tutorStartedConversation = Conversation::query()->create([
+            'student_id' => $tutor->getKey(),
+            'tutor_profile_id' => $anotherTutor->tutorProfile->getKey(),
+        ]);
         $payload = [
             'socket_id' => '123.456',
             'channel_name' => 'private-conversations.'.$conversation->getKey(),
@@ -49,6 +54,9 @@ class ChatBroadcastingTest extends TestCase
 
         $this->actingAs($student, 'sanctum')->postJson('/broadcasting/auth', $payload)->assertOk()->assertJsonStructure(['auth']);
         $this->actingAs($tutor, 'sanctum')->postJson('/broadcasting/auth', $payload)->assertOk()->assertJsonStructure(['auth']);
+        $payload['channel_name'] = 'private-conversations.'.$tutorStartedConversation->getKey();
+        $this->actingAs($tutor, 'sanctum')->postJson('/broadcasting/auth', $payload)->assertOk()->assertJsonStructure(['auth']);
+        $payload['channel_name'] = 'private-conversations.'.$conversation->getKey();
         $this->actingAs($otherStudent, 'sanctum')->postJson('/broadcasting/auth', $payload)->assertForbidden();
         $this->actingAs($admin, 'sanctum')->postJson('/broadcasting/auth', $payload)->assertForbidden();
 

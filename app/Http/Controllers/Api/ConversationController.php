@@ -7,7 +7,10 @@ use App\Http\Requests\StoreConversationRequest;
 use App\Http\Resources\ConversationResource;
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Models\Role;
 use App\Models\TutorProfile;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,13 +25,7 @@ class ConversationController extends Controller
         Gate::authorize('viewAny', Conversation::class);
 
         $user = $request->user();
-        $conversations = Conversation::query();
-
-        if ($user->isApprovedTutor()) {
-            $conversations->where('tutor_profile_id', $user->tutorProfile->getKey());
-        } else {
-            $conversations->where('student_id', $user->getKey());
-        }
+        $conversations = $this->conversationsFor($user);
 
         $unreadCount = Message::query()
             ->whereIn('conversation_id', $conversations->select('id'))
@@ -55,11 +52,7 @@ class ConversationController extends Controller
                 ->where('sender_id', '!=', $user->getKey())
                 ->whereNull('read_at')]);
 
-        if ($user->isApprovedTutor()) {
-            $query->where('tutor_profile_id', $user->tutorProfile->getKey());
-        } else {
-            $query->where('student_id', $user->getKey());
-        }
+        $this->applyParticipantScope($query, $user);
 
         return ConversationResource::collection(
             $query->orderByDesc('updated_at')->orderByDesc('id')->paginate(20),
@@ -102,5 +95,33 @@ class ConversationController extends Controller
         return ConversationResource::make($conversation)
             ->response()
             ->setStatusCode($created ? 201 : 200);
+    }
+
+    private function conversationsFor(User $user): Builder
+    {
+        $query = Conversation::query();
+        $this->applyParticipantScope($query, $user);
+
+        return $query;
+    }
+
+    private function applyParticipantScope(Builder $query, User $user): void
+    {
+        if ($user->hasRole(Role::STUDENT) && $user->isApprovedTutor()) {
+            $query->where(function (Builder $participantQuery) use ($user): void {
+                $participantQuery->where('student_id', $user->getKey())
+                    ->orWhere('tutor_profile_id', $user->tutorProfile->getKey());
+            });
+
+            return;
+        }
+
+        if ($user->isApprovedTutor()) {
+            $query->where('tutor_profile_id', $user->tutorProfile->getKey());
+
+            return;
+        }
+
+        $query->where('student_id', $user->getKey());
     }
 }

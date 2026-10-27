@@ -16,7 +16,6 @@ class TutorProfilePolicy
     public function startConversation(User $user, TutorProfile $tutorProfile): bool
     {
         return $user->hasRole(Role::STUDENT)
-            && ! $user->hasRole(Role::TUTOR)
             && ! $user->hasRole(Role::ADMIN)
             && $tutorProfile->user_id !== $user->getKey()
             && $tutorProfile->user?->is_active === true

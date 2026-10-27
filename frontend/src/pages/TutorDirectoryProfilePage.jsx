@@ -11,7 +11,6 @@ export default function TutorDirectoryProfilePage() {
   const navigate = useNavigate();
   const isStudent = user?.roles?.includes('student') || false;
   const canStartConversation = isStudent
-    && !user?.roles?.includes('tutor')
     && !user?.roles?.includes('admin');
   const [tutor, setTutor] = useState(null);
   const [availability, setAvailability] = useState([]);

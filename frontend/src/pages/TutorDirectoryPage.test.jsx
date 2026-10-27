@@ -6,8 +6,10 @@ import { api } from '../api/client.js';
 import TutorDirectoryPage from './TutorDirectoryPage.jsx';
 import TutorDirectoryProfilePage from './TutorDirectoryProfilePage.jsx';
 
-vi.mock('../api/client.js', () => ({ api: { tutorDirectory: vi.fn(), tutorDirectoryProfile: vi.fn(), tutorDirectoryAvailability: vi.fn(), createBooking: vi.fn() } }));
-vi.mock('../auth/AuthContext.jsx', () => ({ useAuth: () => ({ user: { roles: ['student'] } }) }));
+const authState = vi.hoisted(() => ({ user: { roles: ['student'] } }));
+
+vi.mock('../api/client.js', () => ({ api: { tutorDirectory: vi.fn(), tutorDirectoryProfile: vi.fn(), tutorDirectoryAvailability: vi.fn(), createBooking: vi.fn(), createConversation: vi.fn() } }));
+vi.mock('../auth/AuthContext.jsx', () => ({ useAuth: () => ({ user: authState.user }) }));
 
 const tutors = [
   {
@@ -30,6 +32,7 @@ const tutors = [
 describe('student tutor directory', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authState.user = { roles: ['student'] };
     api.tutorDirectory.mockResolvedValue({ data: tutors });
     api.tutorDirectoryAvailability.mockResolvedValue({ data: [] });
     api.createBooking.mockResolvedValue({ data: { id: 56, status: 'pending' } });
@@ -72,6 +75,23 @@ describe('student tutor directory', () => {
     expect(screen.getByText('Sam T.')).not.toBeNull();
     expect(api.tutorDirectoryProfile).toHaveBeenCalledWith('31');
     expect(screen.queryByText('ada@example.test')).toBeNull();
+  });
+
+  it('lets an approved tutor with the student role start a conversation without a booking', async () => {
+    const user = userEvent.setup();
+    authState.user = { roles: ['student', 'tutor'] };
+    api.tutorDirectoryProfile.mockResolvedValue({ data: tutors[0] });
+    api.createConversation.mockResolvedValue({ data: { id: 88 } });
+    render(<MemoryRouter initialEntries={['/tutors/31']}><Routes>
+      <Route path="/tutors/:tutorProfileId" element={<TutorDirectoryProfilePage />} />
+      <Route path="/messages/:conversationId" element={<p>Conversation opened</p>} />
+    </Routes></MemoryRouter>);
+
+    await user.click(await screen.findByRole('button', { name: 'Message this tutor' }));
+
+    expect(api.createConversation).toHaveBeenCalledWith('31');
+    expect(await screen.findByText('Conversation opened')).not.toBeNull();
+    expect(api.createBooking).not.toHaveBeenCalled();
   });
 
   it('renders real future availability on the tutor detail page', async () => {
