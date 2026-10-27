@@ -8,6 +8,7 @@ import { formatLocalDateTime } from '../utils/dateTime.js';
 
 const reservingStatuses = ['pending', 'accepted'];
 const bookingCategories = [
+  ['all', 'All bookings'],
   ['accepted', 'Upcoming / Accepted'],
   ['pending', 'Pending'],
   ['rejected', 'Rejected'],
@@ -29,7 +30,7 @@ export default function StudentBookingsPage() {
   const [actionError, setActionError] = useState(null);
   const [success, setSuccess] = useState('');
   const [busyId, setBusyId] = useState(null);
-  const [activeStatus, setActiveStatus] = useState('accepted');
+  const [activeStatus, setActiveStatus] = useState('all');
 
   const load = useCallback(async () => {
     const result = await api.studentBookings();
@@ -49,7 +50,9 @@ export default function StudentBookingsPage() {
   if (!isStudent) return <Navigate to="/dashboard" replace />;
   if (loading) return <PageLoader label="Loading your bookings…" />;
 
-  const visibleBookings = bookings.filter((booking) => booking.status === activeStatus);
+  const visibleBookings = activeStatus === 'all'
+    ? bookings
+    : bookings.filter((booking) => booking.status === activeStatus);
 
   async function cancel(booking) {
     setBusyId(booking.id);
